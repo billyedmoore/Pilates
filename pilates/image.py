@@ -2,6 +2,7 @@ from typing import IO,Dict,Callable
 
 class Image:
     _header: bytes = bytes.fromhex("89504E470D0A1A0A")
+    _finished_parsing: bool = False
 
     def __init__(self):
         print("New image")
@@ -24,8 +25,11 @@ class Image:
             if found_header != image._header:
                 raise ValueError("Invalid PNG file.")
             
-            # PNGs have a chunk size of 4-bytes
-            while (length := f.read(4)):
+            # The length at the start of each chunk is 4 bytes,
+            # we read it until we cannot anymore
+            while (not image._finished_parsing):
+                length = f.read(4)
+                print(length,int.from_bytes(length))
                 image._parse_chunk(f,int.from_bytes(length))
 
         return image
@@ -36,9 +40,10 @@ class Image:
     @param length: the length of the chunk
     """
     def _parse_chunk(self,f: IO[bytes],length: int) -> None:
-        chunk_types : Dict[bytes,Callable]= {bytes.fromhex("49484452"):self._parse_IHDR_chunk}
-
+        chunk_types : Dict[bytes,Callable]= {b"IHDR":self._parse_IHDR_chunk,
+                                             b"IEND":self._parse_IEND_chunk}
         chunk_type =f.read(4)
+        print(chunk_type)
 
         if not chunk_type:
             raise ValueError("Not a valid chunk.")
@@ -46,6 +51,8 @@ class Image:
         chunk_parsing_fn = chunk_types.get(chunk_type)
         if not chunk_parsing_fn:
             print(f"Chunk ignored {chunk_type}")
+            # Data plus the CRC at the end
+            f.read(length+4)
         else:
             chunk_parsing_fn(f,length)
 
@@ -56,12 +63,25 @@ class Image:
     """
     def _parse_IHDR_chunk(self,f: IO[bytes],length : int) -> None:
         # TODO: implement
-        length -= 4 # as the identifier has already been read
+        width = f.read(4)
+        height = f.read(4)
+        bit_depth = f.read(1)
+        colour_type  = f.read(1)
+        compression_method = f.read(1)
+        filter_method = f.read(1)
+        interlace_method = f.read(1)
+        crc = f.read(4)
 
-        for i in range(length):
-            block = f.read(1)
-            if not block:
-                raise ValueError("Not a valid IHDR chunk.")
-            print(f"{i} : {int.from_bytes(block)}")
+        print(f"({int.from_bytes(width)}, {int.from_bytes(height)}) bit_depth={bit_depth} colour_type={colour_type}")
+        print(f"compression_method={compression_method} filter_method={filter_method} interlace_method={interlace_method}")
+    
+    
+    """
+    Parse the IEND chunk and stop further parsing.
+    """
+    def _parse_IEND_chunk(self,f: IO[bytes],_ : int):
+        f.read(4) # For the CRC doesn't strictly matter as we are going to stop parsing anyway
+        self._finished_parsing = True
+
 
 
