@@ -35,7 +35,6 @@ class Image:
             # we read it and parse the chunk untill we cannot anymore
             while (not image._finished_parsing):
                 length = f.read(4)
-                print(length, int.from_bytes(length))
                 image._parse_chunk(f, int.from_bytes(length))
 
         return image
@@ -121,28 +120,39 @@ class Image:
         if not self._parsed_IHDR:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
 
+        w, h = self.shape
 
+        samples_per_pixel_by_colour_type = {0:1,2:3,3:1,4:2,6:4}
+
+
+        samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
+        sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
+        pixel_size_in_bits = sample_depth_in_bits * samples_per_pixel 
+        pixel_size_in_bytes = -(-pixel_size_in_bits//8)
+            
         compressed_data: bytes = (f.read(length))
         decompressed_data: bytes = inflate(compressed_data)
-        decompressed_reader: IO[bytes] =  BytesIO(decompressed_data)
-        w,h = self.shape
+        decompressed_reader: IO[bytes] = BytesIO(decompressed_data)
 
         rows = []
         filter_types = []
-
+        
+        number_bytes_read = 0
         for _ in range(h):
             filtering_type = decompressed_reader.read(1)
+            number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
+            
+            number_of_bytes_in_row : int = pixel_size_in_bytes * w
 
-            filtered_row: bytes = decompressed_reader.read(w)
+            filtered_row: bytes = decompressed_reader.read(
+                number_of_bytes_in_row)
+            number_bytes_read += number_of_bytes_in_row
+
             rows.append(filtered_row)
 
-        #print(rows)
-        unfilter(rows,filter_types)
-        #print(rows)
+        unfilter(rows, filter_types)
 
-             
-        print(f"{len(decompressed_data)} -> {((w+1)*h)}")
         _ = f.read(4)
 
     """

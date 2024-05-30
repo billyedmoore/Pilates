@@ -9,19 +9,18 @@ Unfilter a series of rows in place.
 """
 def unfilter(rows: List[bytes], filter_types: List[int]):
     filter_functions: Dict[int, Callable] = {0: lambda *_ : None,
-                                             2: reverse_filter_2}
+                                             1: reverse_filter_1}
     if len(rows) != len(filter_types):
         raise ValueError("Incorrect number of filter types supplied.")
 
     for i,ft in enumerate(filter_types):
         if ft not in [0, 1, 2, 3, 4]:
-            raise ValueError("Invalid filter type specified.")
+            raise ValueError(f"Invalid filter type {ft} specified.")
         defiltering_fn = filter_functions.get(ft)
         if defiltering_fn:
             defiltering_fn(rows,i)
         else:
-            print(f"FT : {ft}")
-            #raise NotImplementedError(f"Filter type {ft} not implemented.")
+            raise NotImplementedError(f"Filter type {ft} not implemented.")
 
 
 
@@ -33,7 +32,7 @@ list inplace.
 @param index: The row to operate on
 """
 
-def reverse_filter_2(rows: List[bytes], index: int) -> None:
+def reverse_filter_1(rows: List[bytes], index: int) -> None:
     row = rows[index]
     row_reader = BytesIO(row)
     unfiltered_row: bytes = b""
@@ -44,3 +43,5 @@ def reverse_filter_2(rows: List[bytes], index: int) -> None:
         unfiltered_row += new_x_val.to_bytes(5)
         a_val = new_x_val
     rows[index] = unfiltered_row
+
+
