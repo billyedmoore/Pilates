@@ -1,8 +1,8 @@
 from typing import IO, Dict, Callable
-from functools import reduce
 from io import BytesIO
 
 from .compression import inflate
+from .filtering import unfilter
 
 
 class Image:
@@ -127,11 +127,21 @@ class Image:
         decompressed_reader: IO[bytes] =  BytesIO(decompressed_data)
         w,h = self.shape
 
+        rows = []
+        filter_types = []
+
         for _ in range(h):
             filtering_type = decompressed_reader.read(1)
-            print(int.from_bytes(filtering_type))
+            filter_types.append(int.from_bytes(filtering_type))
+
             filtered_row: bytes = decompressed_reader.read(w)
-            
+            rows.append(filtered_row)
+
+        #print(rows)
+        unfilter(rows,filter_types)
+        #print(rows)
+
+             
         print(f"{len(decompressed_data)} -> {((w+1)*h)}")
         _ = f.read(4)
 
