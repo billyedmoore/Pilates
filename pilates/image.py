@@ -1,4 +1,8 @@
 from typing import IO, Dict, Callable
+from functools import reduce
+from io import BytesIO
+
+from .compression import inflate
 
 
 class Image:
@@ -28,7 +32,7 @@ class Image:
                 raise ValueError("Invalid PNG file.")
 
             # The length at the start of each chunk is 4 bytes,
-            # we read it until we cannot anymore
+            # we read it and parse the chunk untill we cannot anymore
             while (not image._finished_parsing):
                 length = f.read(4)
                 print(length, int.from_bytes(length))
@@ -116,16 +120,19 @@ class Image:
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
         if not self._parsed_IHDR:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
-        print(length)
-        print(self.shape)
-        print(self._interlace_method)
-        print(f"Length of IDAT chunk: {length} {
-              (self._width+1) * self._height}, {self.shape}")
 
-        first_byte = f.read(4)
-        print(int.from_bytes(first_byte))
 
-        print(f.read(length-4))
+        compressed_data: bytes = (f.read(length))
+        decompressed_data: bytes = inflate(compressed_data)
+        decompressed_reader: IO[bytes] =  BytesIO(decompressed_data)
+        w,h = self.shape
+
+        for _ in range(h):
+            filtering_type = decompressed_reader.read(1)
+            print(int.from_bytes(filtering_type))
+            filtered_row: bytes = decompressed_reader.read(w)
+            
+        print(f"{len(decompressed_data)} -> {((w+1)*h)}")
         _ = f.read(4)
 
     """
