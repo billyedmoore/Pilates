@@ -65,7 +65,7 @@ class Image:
     @param length: the length of the chunk
     """
 
-    def _parse_IHDR_chunk(self, f: IO[bytes], length: int) -> None:
+    def _parse_IHDR_chunk(self, f: IO[bytes], _: int) -> None:
         width = f.read(4)
         height = f.read(4)
         bit_depth = f.read(1)
@@ -73,7 +73,7 @@ class Image:
         compression_method = f.read(1)
         filter_method = f.read(1)
         interlace_method = f.read(1)
-        _ = f.read(4)
+        f.read(4)
 
         # TODO: validate these values
         self._width = int.from_bytes(width)
@@ -106,11 +106,26 @@ class Image:
 
         self._parsed_IHDR = True
 
+    """
+    Parse a single chunk of type IDAT get the data and store it somehow.
+
+    @param f: file pointer to the PNG file as a bytes object
+    @param length: the length of the chunk
+    """
+
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
         if not self._parsed_IHDR:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
+        print(length)
+        print(self.shape)
+        print(self._interlace_method)
+        print(f"Length of IDAT chunk: {length} {
+              (self._width+1) * self._height}, {self.shape}")
 
-        print(f.read(length))
+        first_byte = f.read(4)
+        print(int.from_bytes(first_byte))
+
+        print(f.read(length-4))
         _ = f.read(4)
 
     """
@@ -124,3 +139,7 @@ class Image:
         # For the CRC doesn't strictly matter as we are going to stop parsing anyway
         _ = f.read(4)
         self._finished_parsing = True
+
+    @property
+    def shape(self):
+        return (self._width, self._height)
