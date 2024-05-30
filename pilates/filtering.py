@@ -40,8 +40,26 @@ def reverse_filter_1(rows: List[bytes], index: int) -> None:
     for _ in range(len(row)):
         x_val = row_reader.read(1)
         new_x_val = int.from_bytes(x_val)+a_val
-        unfiltered_row += new_x_val.to_bytes(5)
+        unfiltered_row += (new_x_val%256).to_bytes(1)
         a_val = new_x_val
     rows[index] = unfiltered_row
 
 
+"""
+Updates the list rows to unfilter the row rows[index]. Updates the rows 
+list inplace. Relies on the fact the previous list should have already
+been unfiltered
+
+@param rows: The rows as a list of bytes or length image height
+@param index: The row to operate on
+"""
+
+def reverse_filter_2(rows: List[bytes], index: int) -> None:
+    row = rows[index]
+    row_reader = BytesIO(row)
+    unfiltered_row: bytes = b""
+    for i in range(len(row)):
+        x_val = row_reader.read(1)
+        new_x_val = int.from_bytes(x_val)+rows[index-1][i]
+        unfiltered_row += (new_x_val%256).to_bytes(1)
+    rows[index] = unfiltered_row
