@@ -13,16 +13,16 @@ class Image:
     def __init__(self):
         print("New image")
 
-    """
-    Create an image from a png file.
-
-    @param file_path: the path of the png file to be opened
-    @return: created Image object
-    @raises: ValueError if PNG is not a valid format
-    @raises: FileNotFoundError if PNG is not found
-        """
     @classmethod
     def fromFile(cls, file_path: str):
+        """
+        Create an image from a png file.
+
+        @param file_path: the path of the png file to be opened
+        @return: created Image object
+        @raises: ValueError if PNG is not a valid format
+        @raises: FileNotFoundError if PNG is not found
+            """
         image = cls()
         with open(file_path, "rb") as f:
             found_header = f.read(8)
@@ -39,13 +39,13 @@ class Image:
 
         return image
 
-    """
-    Parse a single chunk of data.
-    @param f: file pointer to the PNG file as a bytes object
-    @param length: the length of the chunk
-    """
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
+        """
+        Parse a single chunk of data.
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
         chunk_types: Dict[bytes, Callable] = {b"IHDR": self._parse_IHDR_chunk,
                                               b"IEND": self._parse_IEND_chunk,
                                               b"IDAT": self._parse_IDAT_chunk}
@@ -61,14 +61,14 @@ class Image:
         else:
             chunk_parsing_fn(f, length)
 
-    """
-    Parse a single chunk of type IHDR and store the attributes.
-
-    @param f: file pointer to the PNG file as a bytes object
-    @param length: the length of the chunk
-    """
 
     def _parse_IHDR_chunk(self, f: IO[bytes], _: int) -> None:
+        """
+        Parse a single chunk of type IHDR and store the attributes.
+
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
         width = f.read(4)
         height = f.read(4)
         bit_depth = f.read(1)
@@ -109,14 +109,14 @@ class Image:
 
         self._parsed_IHDR = True
 
-    """
-    Parse a single chunk of type IDAT get the data and store it somehow.
-
-    @param f: file pointer to the PNG file as a bytes object
-    @param length: the length of the chunk
-    """
 
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
+        """
+        Parse a single chunk of type IDAT get the data and store it somehow.
+
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
         if not self._parsed_IHDR:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
 
