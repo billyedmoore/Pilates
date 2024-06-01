@@ -1,6 +1,6 @@
 # PILates
 
-Alternative python image library.
+Alternative python image library no one should ever use.
 
 ## Planned Features
 
