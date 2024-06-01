@@ -199,6 +199,9 @@ class Image:
         @param rows: the rows of the image as a list of bytes arrays
         """
         w, h = self.shape
+
+        if self._colour_type == 3:
+            raise NotImplementedError("Index based colouring is not yet implemented")
         pixels : List[List[Tuple[int]]] = []
         for row in rows:
             row_pixels :List[Tuple] = []

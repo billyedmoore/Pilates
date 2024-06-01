@@ -1,7 +1,16 @@
 from typing import Tuple
 
 def get_x_bits(x : int, data:bytes) -> Tuple[bytes,bytes]:
+    """
+    Get the first x bits from data, modify data to remove these bits.
 
+    @return: the first x bits as an int
+    @return: the data without the first x bits
+    """
+
+    # Doing this via strings seems somwhat cursed but its much more easy to 
+    # understand than doing binary maths
+    #
     bits_as_string = "".join([f"{x:08b}" for x in list(data)])
     x_bits_as_string = bits_as_string[:x]
     data_as_string = bits_as_string[x:]
