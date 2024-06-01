@@ -1,4 +1,4 @@
-from typing import IO, Dict, Callable
+from typing import IO, Dict, Callable, List
 from io import BytesIO
 
 from .compression import inflate
@@ -9,6 +9,7 @@ class Image:
     _header: bytes = bytes.fromhex("89504E470D0A1A0A")
     _finished_parsing: bool = False
     _parsed_IHDR: bool = False
+    _text_attributes: Dict[str,str] = {}
 
     def __init__(self):
         print("New image")
@@ -48,7 +49,8 @@ class Image:
         """
         chunk_types: Dict[bytes, Callable] = {b"IHDR": self._parse_IHDR_chunk,
                                               b"IEND": self._parse_IEND_chunk,
-                                              b"IDAT": self._parse_IDAT_chunk}
+                                              b"IDAT": self._parse_IDAT_chunk,
+                                              b"tEXt": self._parse_tEXt_chunk}
         chunk_type = f.read(4)
         if not chunk_type:
             raise ValueError("Not a valid chunk.")
@@ -60,6 +62,31 @@ class Image:
             f.read(length+4)
         else:
             chunk_parsing_fn(f, length)
+
+    def _parse_tEXt_chunk(self, f: IO[bytes], length: int) -> None:
+        """
+        Parse a single chunk of type tEXt and store the attributes.
+
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
+        key = b""
+        value = b""
+
+        data = f.read(length)
+        
+        seen_null = False
+
+        for char in list(data):
+            if not seen_null and char:
+                key += (char.to_bytes(1))
+            elif not char:
+                seen_null = True
+            elif seen_null:
+                value += char.to_bytes(1)
+        
+        self._text_attributes[key.decode("utf-8")] =value.decode("utf-8")
+        _ = f.read(4)
 
 
     def _parse_IHDR_chunk(self, f: IO[bytes], _: int) -> None:
@@ -86,6 +113,13 @@ class Image:
         self._compression_method = int.from_bytes(compression_method)
         self._filter_method = int.from_bytes(filter_method)
         self._interlace_method = int.from_bytes(interlace_method)
+
+        samples_per_pixel_by_colour_type = {0:1,2:3,3:1,4:2,6:4}
+
+        self._numb_samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
+        self._sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
+        pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel 
+        self._pixel_size_in_bytes = -(-pixel_size_in_bits//8)
 
         # Confirm that the values are as expected
         if self._interlace_method not in [0, 1]:
@@ -120,18 +154,22 @@ class Image:
         if not self._parsed_IHDR:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
 
-        w, h = self.shape
-
-        samples_per_pixel_by_colour_type = {0:1,2:3,3:1,4:2,6:4}
-
-
-        samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
-        sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
-        pixel_size_in_bits = sample_depth_in_bits * samples_per_pixel 
-        pixel_size_in_bytes = -(-pixel_size_in_bits//8)
-            
         compressed_data: bytes = (f.read(length))
-        decompressed_data: bytes = inflate(compressed_data)
+        rows = self._decompress_and_defilter(compressed_data)
+        self._parse_raw_image_data(rows)
+
+        _ = f.read(4)
+
+    def _decompress_and_defilter(self,data : bytes) -> List[bytes]:
+        """
+        Decompress and defilter the data.
+
+        @param data: the data from the chunk
+        @return: a list of rows of bytes representing the image, each row is of len(self.shape[0]).
+        """
+
+        w, h = self.shape
+        decompressed_data: bytes = inflate(data)
         decompressed_reader: IO[bytes] = BytesIO(decompressed_data)
 
         rows = []
@@ -143,7 +181,7 @@ class Image:
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
             
-            number_of_bytes_in_row : int = pixel_size_in_bytes * w
+            number_of_bytes_in_row : int = self._pixel_size_in_bytes * w
 
             filtered_row: bytes = decompressed_reader.read(
                 number_of_bytes_in_row)
@@ -151,17 +189,25 @@ class Image:
 
             rows.append(filtered_row)
         unfilter(rows, filter_types)
+        return rows
 
-        _ = f.read(4)
+    def _parse_raw_image_data(self,rows: List[bytes]) -> None:
+        """
+        Parse the raw image data for a piticular image update the attributes 
+        of the image
 
-    """
-    Parse the IEND chunk and stop further parsing.
+        @param rows: the rows of the image as a list of bytes arrays
+        """
+        print(rows, self._colour_type)
 
-    @param f: file pointer to the PNG file as a bytes object
-    @param length: the length of the chunk
-    """
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
+        """
+        Parse the IEND chunk and stop further parsing.
+
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
         # For the CRC doesn't strictly matter as we are going to stop parsing anyway
         _ = f.read(4)
         self._finished_parsing = True
