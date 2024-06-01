@@ -1,15 +1,17 @@
-from typing import IO, Dict, Callable, List
+from typing import IO, Dict, Callable, List, Tuple
 from io import BytesIO
+
 
 from .compression import inflate
 from .filtering import unfilter
+from .utils import get_x_bits
 
 
 class Image:
     _header: bytes = bytes.fromhex("89504E470D0A1A0A")
     _finished_parsing: bool = False
     _parsed_IHDR: bool = False
-    _text_attributes: Dict[str,str] = {}
+    _text_attributes: Dict[str, str] = {}
 
     def __init__(self):
         print("New image")
@@ -39,7 +41,6 @@ class Image:
                 image._parse_chunk(f, int.from_bytes(length))
 
         return image
-
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -74,7 +75,7 @@ class Image:
         value = b""
 
         data = f.read(length)
-        
+
         seen_null = False
 
         for char in list(data):
@@ -84,10 +85,9 @@ class Image:
                 seen_null = True
             elif seen_null:
                 value += char.to_bytes(1)
-        
-        self._text_attributes[key.decode("utf-8")] =value.decode("utf-8")
-        _ = f.read(4)
 
+        self._text_attributes[key.decode("utf-8")] = value.decode("utf-8")
+        _ = f.read(4)
 
     def _parse_IHDR_chunk(self, f: IO[bytes], _: int) -> None:
         """
@@ -114,12 +114,11 @@ class Image:
         self._filter_method = int.from_bytes(filter_method)
         self._interlace_method = int.from_bytes(interlace_method)
 
-        samples_per_pixel_by_colour_type = {0:1,2:3,3:1,4:2,6:4}
+        samples_per_pixel_by_colour_type = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
 
         self._numb_samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
         self._sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
-        pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel 
-        self._pixel_size_in_bytes = -(-pixel_size_in_bits//8)
+        self._pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel
 
         # Confirm that the values are as expected
         if self._interlace_method not in [0, 1]:
@@ -143,7 +142,6 @@ class Image:
 
         self._parsed_IHDR = True
 
-
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
         """
         Parse a single chunk of type IDAT get the data and store it somehow.
@@ -160,7 +158,7 @@ class Image:
 
         _ = f.read(4)
 
-    def _decompress_and_defilter(self,data : bytes) -> List[bytes]:
+    def _decompress_and_defilter(self, data: bytes) -> List[bytes]:
         """
         Decompress and defilter the data.
 
@@ -174,32 +172,47 @@ class Image:
 
         rows = []
         filter_types = []
-        
+
         number_bytes_read = 0
         for _ in range(h):
             filtering_type = decompressed_reader.read(1)
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
-            
-            number_of_bytes_in_row : int = self._pixel_size_in_bytes * w
+
+            number_of_bytes_in_row: int = -(-(self._pixel_size_in_bits * w)//8)
 
             filtered_row: bytes = decompressed_reader.read(
                 number_of_bytes_in_row)
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
+        print(rows)
         unfilter(rows, filter_types)
+        print(rows)
         return rows
 
-    def _parse_raw_image_data(self,rows: List[bytes]) -> None:
+    def _parse_raw_image_data(self, rows: List[bytes]) -> None:
         """
         Parse the raw image data for a piticular image update the attributes 
         of the image
 
         @param rows: the rows of the image as a list of bytes arrays
         """
-        print(rows, self._colour_type)
+        w, h = self.shape
+        pixels : List[List[Tuple[int]]] = []
+        for row in rows:
+            row_pixels :List[Tuple] = []
+            for _ in range(w):
+                pixel: List[int] = []
+                for _ in range(self._numb_samples_per_pixel):
+                    val,row = get_x_bits(self._sample_depth_in_bits,row)
+                    val = int.from_bytes(val)
 
+                    pixel.append(val)
+                row_pixels.append(tuple(pixel))
+            pixels.append(row_pixels)
+        self._pixels = pixels
+        print(pixels)
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
         """
