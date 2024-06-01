@@ -1,3 +1,16 @@
+"""
+Unapply (and in the future apply) filters to images. 
+
+Refer to the spec: https://www.w3.org/TR/png/#9Filters
+
+pixels are refered do by there relative position from a pixel x:
+```
+c b 
+a x
+```
+
+"""
+
 from io import BytesIO
 from typing import Dict, Callable, List
 
@@ -36,49 +49,51 @@ def reverse_filter_1(rows: List[bytes], index: int) -> None:
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
-    row = rows[index]
-    row_reader = BytesIO(row)
-    unfiltered_row: bytes = b""
-    a_val = 0
-    for _ in range(len(row)):
-        x_val = row_reader.read(1)
-        new_x_val = int.from_bytes(x_val)+a_val
-        unfiltered_row += (new_x_val%256).to_bytes(1)
-        a_val = new_x_val
-    rows[index] = unfiltered_row
+    row = list(rows[index])
 
-
-"""
-Updates the list rows to unfilter the row rows[index]. Updates the rows 
-list inplace. Relies on the fact the previous list should have already
-been unfiltered
-
-@param rows: The rows as a list of bytes or length image height
-@param index: The row to operate on
-"""
-
-def reverse_filter_2(rows: List[bytes], index: int) -> None:
-    row = rows[index]
-    row_reader = BytesIO(row)
     unfiltered_row: bytes = b""
     for i in range(len(row)):
-        x_val = row_reader.read(1)
-        b_val = int.from_bytes(bytes(rows[index-1][i]))
-        new_x_val = int.from_bytes(x_val)+b_val
+        x_val = row[i]
+        a_val = row[i-1] if i != 0 else 0
+
+        unfiltered_row += ((x_val+a_val)%256).to_bytes(1)
+    rows[index] = unfiltered_row
+
+
+
+def reverse_filter_2(rows: List[bytes], index: int) -> None:
+    """
+    Updates the list rows to unfilter the row rows[index]. Updates the rows 
+    list inplace. Relies on the fact the previous list should have already
+    been unfiltered
+    
+    @param rows: The rows as a list of bytes or length image height
+    @param index: The row to operate on
+    """
+    row = list(rows[index])
+    above_row = [0 for _ in range(len(row))]
+    if index > 0:
+        above_row = list(rows[index-1])
+
+    unfiltered_row: bytes = b""
+    for i in range(len(row)):
+        x_val = row[i]
+        b_val = above_row[i]
+        new_x_val = x_val+b_val
         unfiltered_row += (new_x_val%256).to_bytes(1)
     rows[index] = unfiltered_row
 
 
 
-"""
-Updates the list rows to unfilter the row rows[index]. Updates the rows 
-list inplace.
-
-@param rows: The rows as a list of bytes or length image height
-@param index: The row to operate on
-"""
 
 def reverse_filter_3(rows: List[bytes], index: int) -> None:
+    """
+    Updates the list rows to unfilter the row rows[index]. Updates the rows 
+    list inplace.
+    
+    @param rows: The rows as a list of bytes or length image height
+    @param index: The row to operate on
+    """
     row = rows[index]
     row_reader = BytesIO(row)
     unfiltered_row: bytes = b""
@@ -101,6 +116,31 @@ def reverse_filter_4(rows: List[bytes], index: int) -> None:
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
-    #TODO: implement
-    pass
+    row = list(rows[index])
+    above_row = [0 for _ in range(len(row))]
+    if index > 0:
+        above_row = list(rows[index-1])
+
+    unfiltered_row: bytes = b""
+    for i in range(len(row)):
+        a_val = row[i-1] if i != 0 else 0
+        b_val = above_row[i]
+        c_val = above_row[i-1] if i != 0 else 0
+
+        x_val = row[i]
+
+
+        pa = abs(x_val - a_val)
+        pb = abs(x_val - b_val)
+        pc = abs(x_val - c_val)
+
+        if pa <= pb and pa <= pc:
+            new_x_val = a_val
+        elif pb <= pc:
+            new_x_val = b_val
+        else:
+            new_x_val = c_val
+
+        unfiltered_row += (new_x_val%256).to_bytes(1)
+    rows[index] = unfiltered_row
 

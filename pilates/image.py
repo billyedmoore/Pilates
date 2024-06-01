@@ -150,7 +150,6 @@ class Image:
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
-
         unfilter(rows, filter_types)
 
         _ = f.read(4)
