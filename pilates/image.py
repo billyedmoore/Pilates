@@ -1,10 +1,12 @@
 from typing import IO, Dict, Callable, List, Tuple
 from io import BytesIO
-import time
+import logging
 
 from .compression import inflate
 from .filtering import unfilter
 from .utils import get_x_bits
+
+logging.basicConfig(level=logging.INFO)
 
 
 class Image:
@@ -120,6 +122,13 @@ class Image:
         self._sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
         self._pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel
 
+        logging.info(f"Image shape ({self._width},{self._height})")
+        logging.info(f"Bit depth {self._bit_depth}")
+        logging.info(f"Colour type {self._colour_type}")
+        logging.info(f"Compression method {self._compression_method}")
+        logging.info(f"Filter method {self._filter_method}")
+        logging.info(f"Interlace method {self._interlace_method}")
+
         # Confirm that the values are as expected
         if self._interlace_method not in [0, 1]:
             raise ValueError("Invalid interlace method.")
@@ -200,13 +209,11 @@ class Image:
         @param rows: the rows of the image as a list of bytes arrays
         """
         w, h = self.shape
-        print(self._colour_type,self._filter_types)
 
         if self._colour_type == 3:
             raise NotImplementedError("Index based colouring is not yet implemented")
         pixels : List[List[Tuple[int]]] = []
         for i,row in enumerate(rows):
-            print(f"row : {i+1}, {self.shape}")
             row_pixels :List[Tuple] = []
             for _ in range(w):
                 pixel: List[int] = []
@@ -218,7 +225,6 @@ class Image:
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
         self._pixels = pixels
-        print(pixels)
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
         """
