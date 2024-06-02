@@ -50,13 +50,12 @@ def reverse_filter_1(rows: List[bytes], index: int) -> None:
     """
     row = list(rows[index])
 
-    unfiltered_row: bytes = b""
     for i in range(len(row)):
         x_val = row[i]
         a_val = row[i-1] if i != 0 else 0
 
-        unfiltered_row += ((x_val+a_val) % 256).to_bytes(1)
-    rows[index] = unfiltered_row
+        row[i] = ((x_val+a_val) % 256)
+    rows[index] = bytes(row)
 
 
 def reverse_filter_2(rows: List[bytes], index: int) -> None:
@@ -78,8 +77,9 @@ def reverse_filter_2(rows: List[bytes], index: int) -> None:
         x_val = row[i]
         b_val = above_row[i]
         new_x_val = x_val+b_val
-        unfiltered_row += (new_x_val % 256).to_bytes(1)
-    rows[index] = unfiltered_row
+        row[i] = (new_x_val % 256)
+
+    rows[index] = bytes(row)
 
 
 def reverse_filter_3(rows: List[bytes], index: int) -> None:
@@ -90,17 +90,15 @@ def reverse_filter_3(rows: List[bytes], index: int) -> None:
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
-    row = rows[index]
-    row_reader = BytesIO(row)
-    unfiltered_row: bytes = b""
+    row = list(rows[index])
     a_val = 0
     for i in range(len(row)):
-        b_val = int.from_bytes(bytes(rows[index-1][i]))
-        x_val = row_reader.read(1)
-        new_x_val = int.from_bytes(x_val)+(a_val+b_val//2)
-        unfiltered_row += (new_x_val % 256).to_bytes(1)
+        b_val = rows[index-1][i]
+        x_val = row[i]
+        new_x_val = x_val+(a_val+b_val//2)
+        row[i] = new_x_val % 256
         a_val = new_x_val
-    rows[index] = unfiltered_row
+    rows[index] = bytes(row)
 
 
 def reverse_filter_4(rows: List[bytes], index: int) -> None:
@@ -116,7 +114,6 @@ def reverse_filter_4(rows: List[bytes], index: int) -> None:
     if index > 0:
         above_row = list(rows[index-1])
 
-    unfiltered_row: bytes = b""
     for i in range(len(row)):
         a_val = row[i-1] if i != 0 else 0
         b_val = above_row[i]
@@ -135,5 +132,5 @@ def reverse_filter_4(rows: List[bytes], index: int) -> None:
         else:
             new_x_val = c_val
 
-        unfiltered_row += (new_x_val % 256).to_bytes(1)
-    rows[index] = unfiltered_row
+        row[i]= (new_x_val % 256)
+    rows[index] = bytes(row)

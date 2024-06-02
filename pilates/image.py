@@ -1,6 +1,6 @@
 from typing import IO, Dict, Callable, List, Tuple
 from io import BytesIO
-
+import time
 
 from .compression import inflate
 from .filtering import unfilter
@@ -154,7 +154,9 @@ class Image:
 
         compressed_data: bytes = (f.read(length))
         rows = self._decompress_and_defilter(compressed_data)
+        print("Decompressed")
         self._parse_raw_image_data(rows)
+        print("Parsed")
 
         _ = f.read(4)
 
@@ -186,9 +188,8 @@ class Image:
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
-        print(rows)
         unfilter(rows, filter_types)
-        print(rows)
+        self._filter_types = filter_types
         return rows
 
     def _parse_raw_image_data(self, rows: List[bytes]) -> None:
@@ -199,11 +200,13 @@ class Image:
         @param rows: the rows of the image as a list of bytes arrays
         """
         w, h = self.shape
+        print(self._colour_type,self._filter_types)
 
         if self._colour_type == 3:
             raise NotImplementedError("Index based colouring is not yet implemented")
         pixels : List[List[Tuple[int]]] = []
-        for row in rows:
+        for i,row in enumerate(rows):
+            print(f"row : {i+1}, {self.shape}")
             row_pixels :List[Tuple] = []
             for _ in range(w):
                 pixel: List[int] = []
