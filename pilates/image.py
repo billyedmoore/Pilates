@@ -19,7 +19,7 @@ class Image:
         print("New image")
 
     @classmethod
-    def fromFile(cls, file_path: str):
+    def from_file(cls, file_path: str):
         """
         Create an image from a png file.
 
@@ -43,6 +43,26 @@ class Image:
                 image._parse_chunk(f, int.from_bytes(length))
 
         return image
+
+    def to_bytes(self) -> bytes:
+        """
+        Convert the image to a bytes object that can be saved as a png
+        """
+        def add_chunk_length_byte(byts : bytes):
+            """
+            Add the length byte to a chunk
+            """
+            length = len(byts) - 4
+            if length < 0:
+                raise ValueError("Invalid chunk generated.")
+            byts +=length.to_bytes(1)
+            return byts
+
+        img_as_bytes = self._header 
+        img_as_bytes += add_chunk_length_byte(self._generate_IHDR_chunk())
+
+        return img_as_bytes
+
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -107,7 +127,6 @@ class Image:
         interlace_method = f.read(1)
         f.read(4)
 
-        # TODO: validate these values
         self._width = int.from_bytes(width)
         self._height = int.from_bytes(height)
         self._bit_depth = int.from_bytes(bit_depth)
@@ -148,6 +167,9 @@ class Image:
             raise ValueError("Invalid width.")
         if self._height < (2**31)-1 and self._height < 0:
             raise ValueError("Invalid height.")
+
+        if self._interlace_method == 1:
+            raise NotImplementedError("Interlace method 1 is not implemented.")
 
         self._parsed_IHDR = True
 
@@ -236,6 +258,25 @@ class Image:
         # For the CRC doesn't strictly matter as we are going to stop parsing anyway
         _ = f.read(4)
         self._finished_parsing = True
+    
+    def _generate_IHDR_chunk(self) -> bytes:
+        """
+        Generate the IHDR chunk as a bytes, doesn't include the size.
+        """
+        chunk : bytes = b"IHDR"
+
+        chunk += self._width.to_bytes(4)
+        chunk += self._height.to_bytes(4)
+
+        chunk += self._bit_depth.to_bytes(1) 
+        chunk += self._colour_type.to_bytes(1)
+
+        chunk += int(0).to_bytes(1) # Compression method (only 0 is supported)
+        chunk += int(0).to_bytes(1) # Filter method (only 0 is supported)
+        chunk += int(0).to_bytes(1) # Interlace method (we won't apply any interlacing)
+
+        return chunk
+
 
     @property
     def shape(self):
