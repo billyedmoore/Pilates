@@ -1,10 +1,11 @@
 from typing import IO, Dict, Callable, List, Tuple
 from io import BytesIO
+import zlib  # for crc
 import logging
 
-from .compression import inflate
+from .compression import deflate, inflate
 from .filtering import unfilter
-from .utils import get_x_bits
+from .utils import check_crc, get_crc, get_x_bits
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,21 +49,30 @@ class Image:
         """
         Convert the image to a bytes object that can be saved as a png
         """
-        def add_chunk_length_byte(byts : bytes):
+        def add_chunk_length_bytes(byts: bytes):
             """
             Add the length byte to a chunk
             """
-            length = len(byts) - 4
+            length = len(byts) - 8  # the chunk-type field is 4 bytes
             if length < 0:
                 raise ValueError("Invalid chunk generated.")
-            byts +=length.to_bytes(1)
+            print("length is : ", length)
+            byts = length.to_bytes(4) + byts
             return byts
 
-        img_as_bytes = self._header 
-        img_as_bytes += add_chunk_length_byte(self._generate_IHDR_chunk())
+        def add_crc(byts: bytes):
+            return byts + get_crc(byts)
+
+        img_as_bytes = self._header
+        img_as_bytes += add_chunk_length_bytes(
+            add_crc(self._generate_IHDR_chunk()))
+        print(img_as_bytes.hex())
+        img_as_bytes += add_chunk_length_bytes(
+            add_crc(self._generate_IDAT_chunk()))
+        img_as_bytes += add_chunk_length_bytes(
+            add_crc(self._generate_IEND_chunk()))
 
         return img_as_bytes
-
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -80,10 +90,11 @@ class Image:
 
         chunk_parsing_fn = chunk_types.get(chunk_type)
         if not chunk_parsing_fn:
-            print(f"Chunk ignored {chunk_type}")
+            logging.warning(f"Chunk ignored {chunk_type}")
             # Data plus the CRC at the end
             f.read(length+4)
         else:
+            logging.info(f"Parsing {chunk_type}")
             chunk_parsing_fn(f, length)
 
     def _parse_tEXt_chunk(self, f: IO[bytes], length: int) -> None:
@@ -125,7 +136,10 @@ class Image:
         compression_method = f.read(1)
         filter_method = f.read(1)
         interlace_method = f.read(1)
-        f.read(4)
+
+        crc = f.read(4)
+        check_crc(b"IHDR"+width+height+bit_depth+colour_type +
+                  compression_method+filter_method+interlace_method, crc)
 
         self._width = int.from_bytes(width)
         self._height = int.from_bytes(height)
@@ -231,19 +245,24 @@ class Image:
         @param rows: the rows of the image as a list of bytes arrays
         """
         w, h = self.shape
+        print(w, h)
 
         if self._colour_type == 3:
-            raise NotImplementedError("Index based colouring is not yet implemented")
-        pixels : List[List[Tuple[int]]] = []
-        for i,row in enumerate(rows):
-            row_pixels :List[Tuple] = []
+            raise NotImplementedError(
+                "Index based colouring is not yet implemented")
+        pixels: List[List[Tuple[int]]] = []
+
+        for row in rows:
+            row_pixels: List[Tuple] = []
             for _ in range(w):
                 pixel: List[int] = []
                 for _ in range(self._numb_samples_per_pixel):
-                    val,row = get_x_bits(self._sample_depth_in_bits,row)
+                    val, row = get_x_bits(self._sample_depth_in_bits, row)
+                    # print(i,val,row[-10:])
                     val = int.from_bytes(val)
 
                     pixel.append(val)
+                # print(pixel)
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
         self._pixels = pixels
@@ -258,25 +277,53 @@ class Image:
         # For the CRC doesn't strictly matter as we are going to stop parsing anyway
         _ = f.read(4)
         self._finished_parsing = True
-    
+
     def _generate_IHDR_chunk(self) -> bytes:
         """
         Generate the IHDR chunk as a bytes, doesn't include the size.
         """
-        chunk : bytes = b"IHDR"
+        chunk: bytes = b"IHDR"
 
         chunk += self._width.to_bytes(4)
         chunk += self._height.to_bytes(4)
 
-        chunk += self._bit_depth.to_bytes(1) 
+        chunk += self._bit_depth.to_bytes(1)
         chunk += self._colour_type.to_bytes(1)
 
-        chunk += int(0).to_bytes(1) # Compression method (only 0 is supported)
-        chunk += int(0).to_bytes(1) # Filter method (only 0 is supported)
-        chunk += int(0).to_bytes(1) # Interlace method (we won't apply any interlacing)
+        chunk += int(0).to_bytes(1)  # Compression method (only 0 is supported)
+        chunk += int(0).to_bytes(1)  # Filter method (only 0 is supported)
+        # Interlace method (we won't apply any interlacing)
+        chunk += int(0).to_bytes(1)
 
         return chunk
 
+    def _generate_IDAT_chunk(self) -> bytes:
+        """
+        Generate the IDAT chunk as a bytes, doesn't include the size.
+        """
+        chunk: bytes = b""
+        logging.info(f"Found pixels in shape ({len(self._pixels[0])},{len(self._pixels)})")
+
+        for pix_row in self._pixels:
+            row = int(0).to_bytes(1)  # TODO: Add support for other filtering methods we only apply no filter here
+            for pix in pix_row:
+                for sample in pix:
+                    # TODO: Add handling for sample depths that are not mutliples of 8
+                    if self._sample_depth_in_bits % 8 != 0:
+                        raise NotImplementedError(
+                            "Pixel depths that aren't multiples of 8 aren't handled.")
+
+                    row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
+            chunk += row
+
+        chunk = b"IDAT" + deflate(chunk)
+        return chunk
+
+    def _generate_IEND_chunk(self) -> bytes:
+        """
+        Generate the IEND chunk as a bytes, doesn't include the size.
+        """
+        return b"IEND"
 
     @property
     def shape(self):
