@@ -46,6 +46,7 @@ def reverse_filter_1(rows: List[bytes], index: int, px_size: int) -> None:
     Updates the list rows to unfilter the row rows[index]. Updates the rows 
     list inplace.
 
+    @param px_size: the number of bytes in each pixel
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
@@ -68,6 +69,7 @@ def reverse_filter_2(rows: List[bytes], index: int, px_size: int) -> None:
     list inplace. Relies on the fact the previous list should have already
     been unfiltered
 
+    @param px_size: the number of bytes in each pixel
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
@@ -90,6 +92,7 @@ def reverse_filter_3(rows: List[bytes], index: int, px_size: int) -> None:
     Updates the list rows to unfilter the row rows[index]. Updates the rows 
     list inplace.
 
+    @param px_size: the number of bytes in each pixel
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
@@ -113,6 +116,7 @@ def reverse_filter_4(rows: List[bytes], index: int, px_size: int) -> None:
     Updates the list rows to unfilter the row rows[index]. Updates the rows 
     list inplace.
 
+    @param px_size: the number of bytes in each pixel
     @param rows: The rows as a list of bytes or length image height
     @param index: The row to operate on
     """
@@ -135,6 +139,9 @@ def reverse_filter_4(rows: List[bytes], index: int, px_size: int) -> None:
 
 
 def paeth_predictor(a_val, b_val, c_val):
+    """
+    Paeth predictor used for filter type 4.
+    """
 
     p = a_val+b_val-c_val
 
