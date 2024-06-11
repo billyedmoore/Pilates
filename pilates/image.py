@@ -1,6 +1,6 @@
+from os import ST_APPEND
 from typing import IO, Dict, Callable, List, Tuple
 from io import BytesIO
-import zlib  # for crc
 import logging
 
 from .compression import deflate, inflate
@@ -15,6 +15,7 @@ class Image:
     _finished_parsing: bool = False
     _parsed_IHDR: bool = False
     _text_attributes: Dict[str, str] = {}
+    _thing: bytes = b""
 
     def __init__(self):
         print("New image")
@@ -42,7 +43,6 @@ class Image:
             while (not image._finished_parsing):
                 length = f.read(4)
                 image._parse_chunk(f, int.from_bytes(length))
-
         return image
 
     def to_bytes(self) -> bytes:
@@ -56,7 +56,6 @@ class Image:
             length = len(byts) - 8  # the chunk-type field is 4 bytes
             if length < 0:
                 raise ValueError("Invalid chunk generated.")
-            print("length is : ", length)
             byts = length.to_bytes(4) + byts
             return byts
 
@@ -66,7 +65,6 @@ class Image:
         img_as_bytes = self._header
         img_as_bytes += add_chunk_length_bytes(
             add_crc(self._generate_IHDR_chunk()))
-        print(img_as_bytes.hex())
         img_as_bytes += add_chunk_length_bytes(
             add_crc(self._generate_IDAT_chunk()))
         img_as_bytes += add_chunk_length_bytes(
@@ -184,6 +182,9 @@ class Image:
 
         if self._interlace_method == 1:
             raise NotImplementedError("Interlace method 1 is not implemented.")
+        if self._colour_type ==3:
+            raise NotImplementedError("Indexed colour not supported.")
+
 
         self._parsed_IHDR = True
 
@@ -226,15 +227,16 @@ class Image:
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
 
-            number_of_bytes_in_row: int = -(-(self._pixel_size_in_bits * w)//8)
+            number_of_bytes_in_row: int = -(-(self._pixel_size_in_bits)//8) * w
 
             filtered_row: bytes = decompressed_reader.read(
                 number_of_bytes_in_row)
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
-        unfilter(rows, filter_types)
+        unfilter(rows, filter_types,-(-self._pixel_size_in_bits//8))
         self._filter_types = filter_types
+        print(filter_types)
         return rows
 
     def _parse_raw_image_data(self, rows: List[bytes]) -> None:
@@ -266,6 +268,14 @@ class Image:
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
         self._pixels = pixels
+        if 0 :
+            for row in pixels:
+                print()
+                print(row[0:10])
+                print(row[10:20])
+                print(row[20:30])
+                print(row[30:])
+                print()
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
         """
@@ -305,15 +315,28 @@ class Image:
         logging.info(f"Found pixels in shape ({len(self._pixels[0])},{len(self._pixels)})")
 
         for pix_row in self._pixels:
-            row = int(0).to_bytes(1)  # TODO: Add support for other filtering methods we only apply no filter here
+            row :bytes = int(0).to_bytes(1)  # TODO: Add support for other filtering methods we only apply no filter here
+            wasted : int = 0
             for pix in pix_row:
                 for sample in pix:
                     # TODO: Add handling for sample depths that are not mutliples of 8
                     if self._sample_depth_in_bits % 8 != 0:
                         raise NotImplementedError(
                             "Pixel depths that aren't multiples of 8 aren't handled.")
+                    if wasted != 0:
+                        last_byt : int=  row[-1]
+                        row = row[:-1]
+                        shift = 8 - wasted
+                        new_byte : int= (sample >> shift) & last_byt
+                        row += new_byte.to_bytes(-(-new_byte.bit_length() // 8))
+                        print(bin(last_byt),bin(new_byte))
+                        wasted = abs(wasted-self._sample_depth_in_bits) % 8 
+                    else:
+                        row += sample.to_bytes(-(-self._sample_depth_in_bits //8))
+                        wasted = self._sample_depth_in_bits % 8
+                     
+                #row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
 
-                    row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
             chunk += row
 
         chunk = b"IDAT" + deflate(chunk)
