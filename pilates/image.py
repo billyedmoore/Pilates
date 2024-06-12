@@ -13,9 +13,9 @@ logging.basicConfig(level=logging.INFO)
 class Image:
     _header: bytes = bytes.fromhex("89504E470D0A1A0A")
     _finished_parsing: bool = False
-    _parsed_IHDR: bool = False
+    _parsed_chunks: List[bytes] = []
     _text_attributes: Dict[str, str] = {}
-    _thing: bytes = b""
+    _palette: List[Tuple[int,int,int]] = []
 
     def __init__(self):
         print("New image")
@@ -62,6 +62,10 @@ class Image:
         def add_crc(byts: bytes):
             return byts + get_crc(byts)
 
+        if self._colour_type == 3:
+            self._colour_type = 2
+            self._bit_depth = 8
+
         img_as_bytes = self._header
         img_as_bytes += add_chunk_length_bytes(
             add_crc(self._generate_IHDR_chunk()))
@@ -81,7 +85,8 @@ class Image:
         chunk_types: Dict[bytes, Callable] = {b"IHDR": self._parse_IHDR_chunk,
                                               b"IEND": self._parse_IEND_chunk,
                                               b"IDAT": self._parse_IDAT_chunk,
-                                              b"tEXt": self._parse_tEXt_chunk}
+                                              b"tEXt": self._parse_tEXt_chunk,
+                                              b"PLTE": self._parse_PLTE_chunk}
         chunk_type = f.read(4)
         if not chunk_type:
             raise ValueError("Not a valid chunk.")
@@ -94,6 +99,7 @@ class Image:
         else:
             logging.info(f"Parsing {chunk_type}")
             chunk_parsing_fn(f, length)
+            self._parsed_chunks.append(chunk_type)
 
     def _parse_tEXt_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -182,11 +188,27 @@ class Image:
 
         if self._interlace_method == 1:
             raise NotImplementedError("Interlace method 1 is not implemented.")
-        if self._colour_type ==3:
-            raise NotImplementedError("Indexed colour not supported.")
 
+    def _parse_PLTE_chunk(self, f: IO[bytes], length: int) -> None:
+        """
+        Parse a single chunk of type PLTE get the palette store it as a dict.
 
-        self._parsed_IHDR = True
+        @param f: file pointer to the PNG file as a bytes object
+        @param length: the length of the chunk
+        """
+        palette: bytes = f.read(length)
+        crc: bytes = f.read(4)
+        check_crc(b"PLTE"+palette, crc)
+
+        # We are only gonna use the PLTE if colour_type is 3
+        if self._colour_type != 3:
+            return
+
+        palette_as_list = list(palette)
+        for i in range(0, length, 3):
+            self._palette += [(palette_as_list[i],
+                                palette_as_list[i+1],
+                                palette_as_list[i+2])]
 
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -195,16 +217,24 @@ class Image:
         @param f: file pointer to the PNG file as a bytes object
         @param length: the length of the chunk
         """
-        if not self._parsed_IHDR:
+        if b"IHDR" not in self._parsed_chunks:
             raise ValueError("IDAT chunk must be preceded by a IHDR chunk.")
 
+        if self._colour_type == 3 and b"PLTE" not in self._parsed_chunks:
+            raise ValueError("IDAT chunk must be preceded by a PLTE \
+                             chunk for colour type 3.")
+
         compressed_data: bytes = (f.read(length))
+        crc = f.read(4)
+
+        check_crc(b"IDAT" + compressed_data,crc)
+
         rows = self._decompress_and_defilter(compressed_data)
         print("Decompressed")
         self._parse_raw_image_data(rows)
         print("Parsed")
 
-        _ = f.read(4)
+
 
     def _decompress_and_defilter(self, data: bytes) -> List[bytes]:
         """
@@ -234,9 +264,9 @@ class Image:
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
-        unfilter(rows, filter_types,-(-self._pixel_size_in_bits//8))
+        unfilter(rows, filter_types, -(-self._pixel_size_in_bits//8))
         self._filter_types = filter_types
-        print(filter_types)
+        logging.info("The filter types are: ",filter_types)
         return rows
 
     def _parse_raw_image_data(self, rows: List[bytes]) -> None:
@@ -250,25 +280,33 @@ class Image:
         print(w, h)
 
         if self._colour_type == 3:
-            raise NotImplementedError(
-                "Index based colouring is not yet implemented")
+            pass
+            # raise NotImplementedError(
+            #   "Index based colouring is not yet implemented")
         pixels: List[List[Tuple[int]]] = []
 
         for row in rows:
             row_pixels: List[Tuple] = []
             for _ in range(w):
                 pixel: List[int] = []
-                for _ in range(self._numb_samples_per_pixel):
+                if self._colour_type == 3:
                     val, row = get_x_bits(self._sample_depth_in_bits, row)
-                    # print(i,val,row[-10:])
                     val = int.from_bytes(val)
+                    try:
+                        pixel = list(self._palette[val])
+                    except IndexError:
+                        raise ValueError("Invalid palette index.")
+                else:
+                    for _ in range(self._numb_samples_per_pixel):
+                        val, row = get_x_bits(self._sample_depth_in_bits, row)
+                        # print(i,val,row[-10:])
+                        val = int.from_bytes(val)
 
-                    pixel.append(val)
-                # print(pixel)
+                        pixel.append(val)
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
         self._pixels = pixels
-        if 0 :
+        if 0:
             for row in pixels:
                 print()
                 print(row[0:10])
@@ -312,11 +350,13 @@ class Image:
         Generate the IDAT chunk as a bytes, doesn't include the size.
         """
         chunk: bytes = b""
-        logging.info(f"Found pixels in shape ({len(self._pixels[0])},{len(self._pixels)})")
+        logging.info(f"Found pixels in shape ({
+                     len(self._pixels[0])},{len(self._pixels)})")
 
         for pix_row in self._pixels:
-            row :bytes = int(0).to_bytes(1)  # TODO: Add support for other filtering methods we only apply no filter here
-            wasted : int = 0
+            # TODO: Add support for other filtering methods we only apply no filter here
+            row: bytes = int(0).to_bytes(1)
+            wasted: int = 0
             for pix in pix_row:
                 for sample in pix:
                     # TODO: Add handling for sample depths that are not mutliples of 8
@@ -324,18 +364,18 @@ class Image:
                         raise NotImplementedError(
                             "Pixel depths that aren't multiples of 8 aren't handled.")
                     if wasted != 0:
-                        last_byt : int=  row[-1]
+                        last_byt: int = row[-1]
                         row = row[:-1]
                         shift = 8 - wasted
-                        new_byte : int= (sample >> shift) & last_byt
+                        new_byte: int = (sample >> shift) & last_byt
                         row += new_byte.to_bytes(-(-new_byte.bit_length() // 8))
-                        print(bin(last_byt),bin(new_byte))
-                        wasted = abs(wasted-self._sample_depth_in_bits) % 8 
+                        print(bin(last_byt), bin(new_byte))
+                        wasted = abs(wasted-self._sample_depth_in_bits) % 8
                     else:
-                        row += sample.to_bytes(-(-self._sample_depth_in_bits //8))
+                        row += sample.to_bytes(-(-self._sample_depth_in_bits // 8))
                         wasted = self._sample_depth_in_bits % 8
-                     
-                #row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
+
+                # row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
 
             chunk += row
 
