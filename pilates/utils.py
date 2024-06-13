@@ -13,16 +13,22 @@ def get_x_bits(x : int, data:bytes) -> Tuple[bytes,bytes]:
     if x == 0:
         return b"",data
 
-    if len(data) == 0:
+    elif len(data) == x:
+        return data,b""
+
+    elif len(data) == 0 or len(data) < x:
         raise ValueError("Data cannot be empty.")
+
 
     # Doing this via strings seems somwhat cursed but its much more easy to 
     # understand than doing binary maths
-    #
     bits_as_string = "".join([f"{x:08b}" for x in list(data)])
     x_bits_as_string = bits_as_string[:x]
     data_as_string = bits_as_string[x:]
     x_bits =  int(x_bits_as_string, 2).to_bytes(-(-x // 8))
+    # Append 0s so that the length of data_as_string is a multiple of 8
+    data_as_string += "0" * ((8 - (len(data_as_string) % 8)) % 8)
+        
     data =  bytes([int(data_as_string[i:i+8],2) for i in range(0,len(data_as_string),8)])
 
     return x_bits,data

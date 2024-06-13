@@ -61,10 +61,15 @@ class Image:
 
         def add_crc(byts: bytes):
             return byts + get_crc(byts)
-
+        
+        """
+        If the image currently has a palette we don't respect that
+        and use colour type 2 instead.
+        """
         if self._colour_type == 3:
             self._colour_type = 2
             self._bit_depth = 8
+            self._sample_depth_in_bits = 8
 
         img_as_bytes = self._header
         img_as_bytes += add_chunk_length_bytes(
@@ -156,7 +161,7 @@ class Image:
         samples_per_pixel_by_colour_type = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
 
         self._numb_samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
-        self._sample_depth_in_bits = self._bit_depth if self._colour_type != 3 else 8
+        self._sample_depth_in_bits = self._bit_depth 
         self._pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel
 
         logging.info(f"Image shape ({self._width},{self._height})")
@@ -257,16 +262,17 @@ class Image:
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
 
-            number_of_bytes_in_row: int = -(-(self._pixel_size_in_bits)//8) * w
+            number_of_bytes_in_row: int = -(-(self._pixel_size_in_bits*w)//8)
 
             filtered_row: bytes = decompressed_reader.read(
                 number_of_bytes_in_row)
             number_bytes_read += number_of_bytes_in_row
 
             rows.append(filtered_row)
+
         unfilter(rows, filter_types, -(-self._pixel_size_in_bits//8))
         self._filter_types = filter_types
-        logging.info("The filter types are: ",filter_types)
+        logging.info(f"Filter types {filter_types}")
         return rows
 
     def _parse_raw_image_data(self, rows: List[bytes]) -> None:
@@ -279,10 +285,6 @@ class Image:
         w, h = self.shape
         print(w, h)
 
-        if self._colour_type == 3:
-            pass
-            # raise NotImplementedError(
-            #   "Index based colouring is not yet implemented")
         pixels: List[List[Tuple[int]]] = []
 
         for row in rows:
@@ -299,13 +301,13 @@ class Image:
                 else:
                     for _ in range(self._numb_samples_per_pixel):
                         val, row = get_x_bits(self._sample_depth_in_bits, row)
-                        # print(i,val,row[-10:])
                         val = int.from_bytes(val)
 
                         pixel.append(val)
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
         self._pixels = pixels
+        # For debugging
         if 0:
             for row in pixels:
                 print()
@@ -349,33 +351,24 @@ class Image:
         """
         Generate the IDAT chunk as a bytes, doesn't include the size.
         """
-        chunk: bytes = b""
+        chunk: bytes = b""  
         logging.info(f"Found pixels in shape ({
                      len(self._pixels[0])},{len(self._pixels)})")
 
         for pix_row in self._pixels:
             # TODO: Add support for other filtering methods we only apply no filter here
             row: bytes = int(0).to_bytes(1)
-            wasted: int = 0
+            samples = []
             for pix in pix_row:
                 for sample in pix:
-                    # TODO: Add handling for sample depths that are not mutliples of 8
-                    if self._sample_depth_in_bits % 8 != 0:
-                        raise NotImplementedError(
-                            "Pixel depths that aren't multiples of 8 aren't handled.")
-                    if wasted != 0:
-                        last_byt: int = row[-1]
-                        row = row[:-1]
-                        shift = 8 - wasted
-                        new_byte: int = (sample >> shift) & last_byt
-                        row += new_byte.to_bytes(-(-new_byte.bit_length() // 8))
-                        print(bin(last_byt), bin(new_byte))
-                        wasted = abs(wasted-self._sample_depth_in_bits) % 8
-                    else:
-                        row += sample.to_bytes(-(-self._sample_depth_in_bits // 8))
-                        wasted = self._sample_depth_in_bits % 8
+                    samples.append(sample)
 
-                # row += sample.to_bytes(-(-self._sample_depth_in_bits//8))
+            str_row = "".join([f"{s:0{self._sample_depth_in_bits}b}" for s in samples])
+            
+            # If len(str_row) is not devisible by 8 then pad with 0s
+            str_row += "0" * ((8 - (len(str_row) % 8)) % 8)
+
+            row += bytes([int(str_row[i:i+8],2) for i in range(0,len(str_row),8)])
 
             chunk += row
 
