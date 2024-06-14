@@ -5,7 +5,7 @@ import logging
 
 from .compression import deflate, inflate
 from .filtering import unfilter
-from .utils import check_crc, get_crc, get_x_bits
+from .utils import bytes_to_binary_string, check_crc, get_crc, get_x_bits
 
 logging.basicConfig(level=logging.INFO)
 
@@ -15,7 +15,10 @@ class Image:
     _finished_parsing: bool = False
     _parsed_chunks: List[bytes] = []
     _text_attributes: Dict[str, str] = {}
-    _palette: List[Tuple[int,int,int]] = []
+    _palette: List[Tuple[int, int, int]] = []
+    _IDAT_stream: bytes = b""
+    _pixels: List = []
+    _pixels_loaded: bool = False
 
     def __init__(self):
         print("New image")
@@ -61,11 +64,12 @@ class Image:
 
         def add_crc(byts: bytes):
             return byts + get_crc(byts)
-        
-        """
-        If the image currently has a palette we don't respect that
-        and use colour type 2 instead.
-        """
+
+        if not self._pixels:
+            raise ValueError("Cannot conver to bytes as IDAT data not parsed.")
+
+        # If the image currently has a palette we don't respect that
+        # and use colour type 2 instead.
         if self._colour_type == 3:
             self._colour_type = 2
             self._bit_depth = 8
@@ -161,7 +165,7 @@ class Image:
         samples_per_pixel_by_colour_type = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
 
         self._numb_samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
-        self._sample_depth_in_bits = self._bit_depth 
+        self._sample_depth_in_bits = self._bit_depth
         self._pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel
 
         logging.info(f"Image shape ({self._width},{self._height})")
@@ -212,8 +216,8 @@ class Image:
         palette_as_list = list(palette)
         for i in range(0, length, 3):
             self._palette += [(palette_as_list[i],
-                                palette_as_list[i+1],
-                                palette_as_list[i+2])]
+                               palette_as_list[i+1],
+                               palette_as_list[i+2])]
 
     def _parse_IDAT_chunk(self, f: IO[bytes], length: int) -> None:
         """
@@ -232,16 +236,11 @@ class Image:
         compressed_data: bytes = (f.read(length))
         crc = f.read(4)
 
-        check_crc(b"IDAT" + compressed_data,crc)
+        check_crc(b"IDAT" + compressed_data, crc)
 
-        rows = self._decompress_and_defilter(compressed_data)
-        print("Decompressed")
-        self._parse_raw_image_data(rows)
-        print("Parsed")
+        self._IDAT_stream += compressed_data
 
-
-
-    def _decompress_and_defilter(self, data: bytes) -> List[bytes]:
+    def _defilter(self, data: bytes) -> List[bytes]:
         """
         Decompress and defilter the data.
 
@@ -250,14 +249,13 @@ class Image:
         """
 
         w, h = self.shape
-        decompressed_data: bytes = inflate(data)
-        decompressed_reader: IO[bytes] = BytesIO(decompressed_data)
+        decompressed_reader: IO[bytes] = BytesIO(data)
 
         rows = []
         filter_types = []
 
         number_bytes_read = 0
-        for _ in range(h):
+        for i in range(h):
             filtering_type = decompressed_reader.read(1)
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
@@ -271,7 +269,6 @@ class Image:
             rows.append(filtered_row)
 
         unfilter(rows, filter_types, -(-self._pixel_size_in_bits//8))
-        self._filter_types = filter_types
         logging.info(f"Filter types {filter_types}")
         return rows
 
@@ -286,6 +283,7 @@ class Image:
         print(w, h)
 
         pixels: List[List[Tuple[int]]] = []
+        bits_read = 0
 
         for row in rows:
             row_pixels: List[Tuple] = []
@@ -293,6 +291,7 @@ class Image:
                 pixel: List[int] = []
                 if self._colour_type == 3:
                     val, row = get_x_bits(self._sample_depth_in_bits, row)
+                    bits_read += self._sample_depth_in_bits
                     val = int.from_bytes(val)
                     try:
                         pixel = list(self._palette[val])
@@ -300,9 +299,9 @@ class Image:
                         raise ValueError("Invalid palette index.")
                 else:
                     for _ in range(self._numb_samples_per_pixel):
+                        bits_read += self._sample_depth_in_bits
                         val, row = get_x_bits(self._sample_depth_in_bits, row)
                         val = int.from_bytes(val)
-
                         pixel.append(val)
                 row_pixels.append(tuple(pixel))
             pixels.append(row_pixels)
@@ -324,6 +323,12 @@ class Image:
         @param f: file pointer to the PNG file as a bytes object
         @param length: the length of the chunk
         """
+        print("Decompressed")
+        decompressed_data: bytes = inflate(self._IDAT_stream)
+        rows = self._defilter(decompressed_data)
+        self._parse_raw_image_data(rows)
+        print("Parsed")
+
         # For the CRC doesn't strictly matter as we are going to stop parsing anyway
         _ = f.read(4)
         self._finished_parsing = True
@@ -351,7 +356,7 @@ class Image:
         """
         Generate the IDAT chunk as a bytes, doesn't include the size.
         """
-        chunk: bytes = b""  
+        chunk: bytes = b""
         logging.info(f"Found pixels in shape ({
                      len(self._pixels[0])},{len(self._pixels)})")
 
@@ -363,12 +368,14 @@ class Image:
                 for sample in pix:
                     samples.append(sample)
 
-            str_row = "".join([f"{s:0{self._sample_depth_in_bits}b}" for s in samples])
-            
+            str_row = "".join(
+                [f"{s:0{self._sample_depth_in_bits}b}" for s in samples])
+
             # If len(str_row) is not devisible by 8 then pad with 0s
             str_row += "0" * ((8 - (len(str_row) % 8)) % 8)
 
-            row += bytes([int(str_row[i:i+8],2) for i in range(0,len(str_row),8)])
+            row += bytes([int(str_row[i:i+8], 2)
+                         for i in range(0, len(str_row), 8)])
 
             chunk += row
 
