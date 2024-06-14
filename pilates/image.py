@@ -84,6 +84,16 @@ class Image:
             add_crc(self._generate_IEND_chunk()))
 
         return img_as_bytes
+    
+    def to_file(self,filename: str):
+        """
+        Save the image as a png at filename
+
+        @param filename: the filename to save to
+        @raises FileNotFoundError: if filename isn't valid
+        """
+        with open(filename,"wb") as f:
+            f.write(self.to_bytes())
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
         """
