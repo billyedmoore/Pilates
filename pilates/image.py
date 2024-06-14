@@ -391,3 +391,43 @@ class Image:
     @property
     def shape(self):
         return (self._width, self._height)
+    
+    def get_pixels(self):
+        """
+        Get a copy of the 2d list of pixels
+        """
+        if self._finished_parsing:
+            return self._pixels.copy()
+        else:
+            return []
+
+    def set_pixels(self,new_pixels: List[List[Tuple]]) -> bool:
+        """
+        Perform some checks to see if the passed new_pixels is valid,
+        if it is then set self._pixels to it.
+        
+        @param a 2d list of pixels 
+        @return whether the pixel list has been changed.
+        
+        """
+        w,h = self.shape
+        if len(new_pixels) != h:
+            return False
+
+        for row in new_pixels:
+            if len(row) != w:
+                return False
+            for px in row:
+                if len(px) != self._numb_samples_per_pixel:
+                    return False
+                for sample in px:
+                    if not isinstance(sample,int):
+                        return False
+                    if sample.bit_length() > self._sample_depth_in_bits:
+                        return False
+        
+        return True
+
+
+
+
