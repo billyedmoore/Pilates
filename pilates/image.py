@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from os import ST_APPEND
-from typing import IO, Dict, Callable, List, Tuple
+from typing import IO, Dict, Callable, List, Literal, Tuple
 from io import BytesIO
 import logging
 
@@ -12,16 +13,34 @@ logging.basicConfig(level=logging.INFO)
 
 class Image:
     _header: bytes = bytes.fromhex("89504E470D0A1A0A")
-    _finished_parsing: bool = False
-    _parsed_chunks: List[bytes] = []
-    _text_attributes: Dict[str, str] = {}
-    _palette: List[Tuple[int, int, int]] = []
-    _IDAT_stream: bytes = b""
-    _pixels: List = []
-    _pixels_loaded: bool = False
+    _valid_colour_types = [0, 2, 3, 4, 6]
+    _number_samples_per_pixel_by_colour_type = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+    _valid_bit_depths_by_colour_type = {0: [1, 2, 4, 8, 16],
+                                        2: [8, 16],
+                                        3: [1, 2, 4, 8],
+                                        4: [8, 16],
+                                        6: [8, 16]}
 
     def __init__(self):
         print("New image")
+
+        # set our defaults
+        self._width: int = 0
+        self._height: int = 0
+        self._bit_depth: int = 0  # 0 is used for not set
+        self._colour_type: int = 2
+        self._compression_method: int = 0
+        self._filter_method: int = 0
+        self._interlace_method: int = 0
+        self._pixels: List[List[List[int]]] = []
+        self._text_attributes: Dict[str, str] = {}
+        self._palette: List[Iterable[int]] = []
+
+        # attributes used in parsing
+        self._finished_parsing: bool = False
+        self._parsed_chunks: List[bytes] = []
+        self._IDAT_stream: bytes = b""
+        self._pixels_loaded: bool = False
 
     @classmethod
     def from_file(cls, file_path: str):
@@ -46,6 +65,53 @@ class Image:
             while (not image._finished_parsing):
                 length = f.read(4)
                 image._parse_chunk(f, int.from_bytes(length))
+        return image
+
+    @classmethod
+    def new_image(cls, width=1000, height=1000, colour_type: Literal[0, 2, 3, 4, 6] = 2, bit_depth: Literal[1, 2, 4, 8, 16] = 8,background_colour=[255,105,180]):
+        """
+        Create a new blank image with the given colour_type and bit_depth
+        """
+        # As types are not enforced
+        if colour_type not in cls._valid_colour_types:
+            raise ValueError("Invalid colour_type specified.")
+
+        if bit_depth not in cls._valid_bit_depths_by_colour_type[colour_type]:
+            raise ValueError("Invalid bit_depth specified")
+    
+        image = cls()
+        image._width = width 
+        image._height = height
+        image._bit_depth = bit_depth
+        image._colour_type = colour_type
+        image._compression_method = 0
+        image._filter_method = 0
+        image._interlace_method = 0
+
+        image._log_state()
+    
+        if background_colour == None:
+            background_colour = [0 for _ in range(image._numb_samples_per_pixel)]
+        else:
+            if len(background_colour) != image._numb_samples_per_pixel:
+                raise ValueError("background_colour has the incorrect number of samples specified")
+
+            for sample in background_colour:
+                if sample.bit_length() > image._bit_depth:
+                    raise ValueError("Specified sample cannot be represented within the specified bit_depth.")
+
+        image._pixels = [[background_colour for _ in range(width)]for _ in range(height)]
+
+        # For debugging
+        if 0:
+            for row in image._pixels:
+                print()
+                print(row[0:10])
+                print(row[10:20])
+                print(row[20:30])
+                print(row[30:])
+                print()
+
         return image
 
     def to_bytes(self) -> bytes:
@@ -84,15 +150,15 @@ class Image:
             add_crc(self._generate_IEND_chunk()))
 
         return img_as_bytes
-    
-    def to_file(self,filename: str):
+
+    def to_file(self, filename: str):
         """
         Save the image as a png at filename
 
         @param filename: the filename to save to
         @raises FileNotFoundError: if filename isn't valid
         """
-        with open(filename,"wb") as f:
+        with open(filename, "wb") as f:
             f.write(self.to_bytes())
 
     def _parse_chunk(self, f: IO[bytes], length: int) -> None:
@@ -145,6 +211,17 @@ class Image:
         self._text_attributes[key.decode("utf-8")] = value.decode("utf-8")
         _ = f.read(4)
 
+    def _log_state(self):
+        """"
+        log the state of the image to INFO 
+        """
+        logging.info(f"Image shape ({self._width},{self._height})")
+        logging.info(f"Bit depth {self._bit_depth}")
+        logging.info(f"Colour type {self._colour_type}")
+        logging.info(f"Compression method {self._compression_method}")
+        logging.info(f"Filter method {self._filter_method}")
+        logging.info(f"Interlace method {self._interlace_method}")
+
     def _parse_IHDR_chunk(self, f: IO[bytes], _: int) -> None:
         """
         Parse a single chunk of type IHDR and store the attributes.
@@ -171,34 +248,18 @@ class Image:
         self._compression_method = int.from_bytes(compression_method)
         self._filter_method = int.from_bytes(filter_method)
         self._interlace_method = int.from_bytes(interlace_method)
-
-        samples_per_pixel_by_colour_type = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
-
-        self._numb_samples_per_pixel = samples_per_pixel_by_colour_type[self._colour_type]
-        self._sample_depth_in_bits = self._bit_depth
-        self._pixel_size_in_bits = self._sample_depth_in_bits * self._numb_samples_per_pixel
-
-        logging.info(f"Image shape ({self._width},{self._height})")
-        logging.info(f"Bit depth {self._bit_depth}")
-        logging.info(f"Colour type {self._colour_type}")
-        logging.info(f"Compression method {self._compression_method}")
-        logging.info(f"Filter method {self._filter_method}")
-        logging.info(f"Interlace method {self._interlace_method}")
+        
+        self._log_state()
 
         # Confirm that the values are as expected
         if self._interlace_method not in [0, 1]:
             raise ValueError("Invalid interlace method.")
         if self._compression_method != 0:
             raise ValueError("Invalid compression method.")
-        if self._colour_type not in [0, 2, 3, 4, 6]:
+        if self._colour_type not in self._valid_colour_types:
             raise ValueError("Invalid colour type.")
         # The valid bit_depths by colour_type
-        valid_bit_depths = {0: [1, 2, 4, 8, 16],
-                            2: [8, 16],
-                            3: [1, 2, 4, 8],
-                            4: [8, 16],
-                            6: [8, 16]}
-        if self._bit_depth not in valid_bit_depths[self._colour_type]:
+        if self._bit_depth not in self._valid_bit_depths_by_colour_type[self._colour_type]:
             raise ValueError("Invalid bit depth.")
         if self._width < (2**31)-1 and self._width < 0:
             raise ValueError("Invalid width.")
@@ -265,7 +326,7 @@ class Image:
         filter_types = []
 
         number_bytes_read = 0
-        for i in range(h):
+        for _ in range(h):
             filtering_type = decompressed_reader.read(1)
             number_bytes_read += 1
             filter_types.append(int.from_bytes(filtering_type))
@@ -292,11 +353,11 @@ class Image:
         w, h = self.shape
         print(w, h)
 
-        pixels: List[List[Tuple[int]]] = []
+        pixels: List[List[List[int]]] = []
         bits_read = 0
 
         for row in rows:
-            row_pixels: List[Tuple] = []
+            row_pixels: List[List] = []
             for _ in range(w):
                 pixel: List[int] = []
                 if self._colour_type == 3:
@@ -309,22 +370,13 @@ class Image:
                         raise ValueError("Invalid palette index.")
                 else:
                     for _ in range(self._numb_samples_per_pixel):
-                        bits_read += self._sample_depth_in_bits
-                        val, row = get_x_bits(self._sample_depth_in_bits, row)
+                        bits_read += self._bit_depth
+                        val, row = get_x_bits(self._bit_depth, row)
                         val = int.from_bytes(val)
                         pixel.append(val)
-                row_pixels.append(tuple(pixel))
+                row_pixels.append(pixel)
             pixels.append(row_pixels)
         self._pixels = pixels
-        # For debugging
-        if 0:
-            for row in pixels:
-                print()
-                print(row[0:10])
-                print(row[10:20])
-                print(row[20:30])
-                print(row[30:])
-                print()
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
         """
@@ -379,7 +431,7 @@ class Image:
                     samples.append(sample)
 
             str_row = "".join(
-                [f"{s:0{self._sample_depth_in_bits}b}" for s in samples])
+                [f"{s:0{self._bit_depth}b}" for s in samples])
 
             # If len(str_row) is not devisible by 8 then pad with 0s
             str_row += "0" * ((8 - (len(str_row) % 8)) % 8)
@@ -401,7 +453,7 @@ class Image:
     @property
     def shape(self):
         return (self._width, self._height)
-    
+
     def get_pixels(self):
         """
         Get a copy of the 2d list of pixels
@@ -411,16 +463,16 @@ class Image:
         else:
             return []
 
-    def set_pixels(self,new_pixels: List[List[Tuple]]) -> bool:
+    def set_pixels(self, new_pixels: List[List[Tuple]]) -> bool:
         """
         Perform some checks to see if the passed new_pixels is valid,
         if it is then set self._pixels to it.
-        
+
         @param a 2d list of pixels 
         @return whether the pixel list has been changed.
-        
+
         """
-        w,h = self.shape
+        w, h = self.shape
         if len(new_pixels) != h:
             return False
 
@@ -431,13 +483,17 @@ class Image:
                 if len(px) != self._numb_samples_per_pixel:
                     return False
                 for sample in px:
-                    if not isinstance(sample,int):
+                    if not isinstance(sample, int):
                         return False
                     if sample.bit_length() > self._sample_depth_in_bits:
                         return False
-        
+
         return True
 
+    @property
+    def _pixel_size_in_bits(self):
+        return self._bit_depth * self._numb_samples_per_pixel
 
-
-
+    @property
+    def _numb_samples_per_pixel(self):
+        return self._number_samples_per_pixel_by_colour_type[self._colour_type]
