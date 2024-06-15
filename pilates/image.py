@@ -76,6 +76,9 @@ class Image:
         if colour_type not in cls._valid_colour_types:
             raise ValueError("Invalid colour_type specified.")
 
+        if colour_type != 2:
+            raise ValueError("Cannot create index based images.")
+
         if bit_depth not in cls._valid_bit_depths_by_colour_type[colour_type]:
             raise ValueError("Invalid bit_depth specified")
     
