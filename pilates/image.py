@@ -68,7 +68,7 @@ class Image:
         return image
 
     @classmethod
-    def new_image(cls, width=1000, height=1000, colour_type: Literal[0, 2, 3, 4, 6] = 2, bit_depth: Literal[1, 2, 4, 8, 16] = 8,background_colour=[255,105,180]):
+    def new_image(cls, width=1000, height=1000, colour_type: Literal[0, 2, 3, 4, 6] = 2, bit_depth: Literal[1, 2, 4, 8, 16] = 8, background_colour=[255, 105, 180]):
         """
         Create a new blank image with the given colour_type and bit_depth
         """
@@ -81,9 +81,9 @@ class Image:
 
         if bit_depth not in cls._valid_bit_depths_by_colour_type[colour_type]:
             raise ValueError("Invalid bit_depth specified")
-    
+
         image = cls()
-        image._width = width 
+        image._width = width
         image._height = height
         image._bit_depth = bit_depth
         image._colour_type = colour_type
@@ -92,18 +92,15 @@ class Image:
         image._interlace_method = 0
 
         image._log_state()
-    
+
         if background_colour == None:
-            background_colour = [0 for _ in range(image._numb_samples_per_pixel)]
+            background_colour = [0 for _ in range(
+                image._numb_samples_per_pixel)]
         else:
-            if len(background_colour) != image._numb_samples_per_pixel:
-                raise ValueError("background_colour has the incorrect number of samples specified")
+            image._test_pixel(background_colour)
 
-            for sample in background_colour:
-                if sample.bit_length() > image._bit_depth:
-                    raise ValueError("Specified sample cannot be represented within the specified bit_depth.")
-
-        image._pixels = [[background_colour for _ in range(width)]for _ in range(height)]
+        image._pixels = [
+            [background_colour for _ in range(width)]for _ in range(height)]
 
         # For debugging
         if 0:
@@ -251,7 +248,7 @@ class Image:
         self._compression_method = int.from_bytes(compression_method)
         self._filter_method = int.from_bytes(filter_method)
         self._interlace_method = int.from_bytes(interlace_method)
-        
+
         self._log_state()
 
         # Confirm that the values are as expected
@@ -466,7 +463,7 @@ class Image:
         else:
             return []
 
-    def set_pixels(self, new_pixels: List[List[Tuple]]) -> bool:
+    def replace_pixels(self, new_pixels: List[List[Tuple]]) -> bool:
         """
         Perform some checks to see if the passed new_pixels is valid,
         if it is then set self._pixels to it.
@@ -490,8 +487,32 @@ class Image:
                         return False
                     if sample.bit_length() > self._sample_depth_in_bits:
                         return False
-
         return True
+
+    def _test_pixel(self,pix: List[int]):
+        """
+        Test if pixel is valid. Raise an error if not.
+
+        @raises ValueError
+        """
+        if len(pix) != self._numb_samples_per_pixel:
+            raise ValueError("Pixel has the incorrect number of samples.")
+
+        for sample in pix:
+            if sample.bit_length() > self._bit_depth:
+                raise ValueError("Sample is to large to be represented")
+
+    def set_pixel(self, x: int, y: int, pix: List[int]):
+        """
+        Set the specified pixel to pix if its valid.
+        """
+        w,h = self.shape
+        if x > w or x < 0 or y > h or y < 0:
+            raise ValueError("Cannot set pixel out of bounds.")
+        self._test_pixel(pix)
+
+        self._pixels[y][x] = pix
+
 
     @property
     def _pixel_size_in_bits(self):
