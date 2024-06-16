@@ -1,9 +1,9 @@
 from collections.abc import Iterable
-from os import ST_APPEND
 from typing import IO, Dict, Callable, List, Literal, Tuple
 from io import BytesIO
 import logging
 
+#from .transforms import Transform
 from .compression import deflate, inflate
 from .filtering import unfilter
 from .utils import bytes_to_binary_string, check_crc, get_crc, get_x_bits
@@ -102,15 +102,6 @@ class Image:
         image._pixels = [
             [background_colour for _ in range(width)]for _ in range(height)]
 
-        # For debugging
-        if 0:
-            for row in image._pixels:
-                print()
-                print(row[0:10])
-                print(row[10:20])
-                print(row[20:30])
-                print(row[30:])
-                print()
 
         return image
 
@@ -527,3 +518,19 @@ class Image:
     @property
     def _numb_samples_per_pixel(self):
         return self._number_samples_per_pixel_by_colour_type[self._colour_type]
+    
+    @property
+    def bit_depth(self):
+        return self._bit_depth
+
+    def apply_transform(self,transform):
+        """
+        Apply a given transform to the image.
+        """
+        # this is imported here due to circular import 
+        from .transforms import Transform
+
+        if not isinstance(transform,Transform):
+            raise ValueError("Cannot apply tranform as it doesn't deride from Transform.")
+        transform.apply(self)
+
