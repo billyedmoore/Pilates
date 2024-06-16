@@ -513,6 +513,12 @@ class Image:
 
         self._pixels[y][x] = pix
 
+    def get_pixel(self, x: int, y: int):
+        """
+        Get a copy of the pixel at a given coord.
+        """
+        return self._pixels[y][x].copy()
+
 
     @property
     def _pixel_size_in_bits(self):
