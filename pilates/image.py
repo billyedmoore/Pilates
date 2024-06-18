@@ -4,7 +4,6 @@ from typing import IO, Dict, Callable, List, Literal
 from io import BytesIO
 import logging
 
-#from .transforms import Transform
 from .compression import deflate, inflate
 from .filtering import unfilter
 from .utils import check_crc, get_crc, get_x_bits
@@ -103,7 +102,6 @@ class Image:
         image._pixels = [
             [background_colour for _ in range(width)]for _ in range(height)]
 
-
         return image
 
     def to_bytes(self) -> bytes:
@@ -125,7 +123,6 @@ class Image:
 
         if not self._pixels:
             raise ValueError("Cannot conver to bytes as IDAT data not parsed.")
-
 
         img_as_bytes = self._header
         img_as_bytes += add_chunk_length_bytes(
@@ -363,7 +360,6 @@ class Image:
                 row_pixels.append(pixel)
             pixels.append(row_pixels)
 
-        
         # if the image has index based colour we convert it to the equivilent
         # normal version
         if self._colour_type == 3:
@@ -466,7 +462,7 @@ class Image:
         @return whether the pixel list has been changed.
 
         """
-        len_prev_row : int | None = None
+        len_prev_row: int | None = None
         for row in new_pixels:
             if len_prev_row != None and len(row) != len_prev_row:
                 raise ValueError("Rows of pixels must be of the same length.")
@@ -476,11 +472,10 @@ class Image:
 
         self._width = len(new_pixels[0])
         self._height = len(new_pixels)
-        
-        self._pixels = new_pixels
-    
 
-    def _test_pixel(self,pix: List[int]):
+        self._pixels = new_pixels
+
+    def _test_pixel(self, pix: List[int]):
         """
         Test if pixel is valid. Raise an error if not.
 
@@ -490,14 +485,14 @@ class Image:
             raise ValueError("Pixel has the incorrect number of samples.")
 
         for sample in pix:
-            if sample.bit_length() > self.bit_depth or sample <  0:
+            if sample.bit_length() > self.bit_depth or sample < 0:
                 raise ValueError("Sample is to large to be represented")
 
     def set_pixel(self, x: int, y: int, pix: List[int]):
         """
         Set the specified pixel to pix if its valid.
         """
-        w,h = self.shape
+        w, h = self.shape
         if x > w or x < 0 or y > h or y < 0:
             raise ValueError("Cannot set pixel out of bounds.")
         self._test_pixel(pix)
@@ -508,12 +503,12 @@ class Image:
         """
         Get a copy of the pixel at a given coord.
         """
-        w,h = self.shape
-        if x >= w or y >= h or x < 0 or y <0:
-            raise IndexError(f"Cannot get pixel ({x},{y}) from image of size ({w},{h}).")
-            
-        return self._pixels[y][x].copy()
+        w, h = self.shape
+        if x >= w or y >= h or x < 0 or y < 0:
+            raise IndexError(
+                f"Cannot get pixel ({x},{y}) from image of size ({w},{h}).")
 
+        return self._pixels[y][x].copy()
 
     @property
     def _pixel_size_in_bits(self):
@@ -521,20 +516,54 @@ class Image:
 
     @property
     def numb_samples_per_pixel(self):
-        return self._number_samples_per_pixel_by_colour_type[self._colour_type]
-    
+        return self._number_samples_per_pixel_by_colour_type[self.colour_type]
+
     @property
     def bit_depth(self):
         return self._bit_depth
 
-    def apply_transform(self,transform):
+    @property
+    def colour_type(self):
+        return self._colour_type
+
+    def set_bit_depth(self, new_bit_depth: int):
+        """
+        Change the bit depth of the image. Raises a value error if the specified value 
+        isn't valid for the current image. Results in a loss of colour depth if 
+        the specified bit_depth is less than the original bit depth. 
+
+        @param new_bit_depth: The new bit depth to be specified one of 1,2,4,8,16. 
+        @raises ValueError: If the value isn't valid for the colour type. 
+        """
+        if new_bit_depth not in self._valid_bit_depths_by_colour_type[self.colour_type]:
+            ValueError(f"Given bit depth {
+                       new_bit_depth} is'nt valid for colour type {self.colour_type}")
+
+        new_max = (2**new_bit_depth)-1
+        old_max = (2**self.bit_depth)-1
+        
+        old_bit_depth = self.bit_depth
+
+        self._bit_depth = new_bit_depth
+        w, h = self.shape
+        for y in range(h):
+            for x in range(w):
+                pixel = self.get_pixel(x, y)
+                new_pixel = []
+                for i in range(len(pixel)):
+                    # scale to new range
+                    new_pixel.append(int((pixel[i] / old_max)*new_max))
+                self.set_pixel(x, y, new_pixel)
+        logging.info(f"Changed the bit_depth from {old_bit_depth} to {new_bit_depth}")
+
+    def apply_transform(self, transform):
         """
         Apply a given transform to the image.
         """
-        # this is imported here due to circular import 
+        # this is imported here due to circular import
         from .transforms import Transform
 
-        if not isinstance(transform,Transform):
-            raise ValueError("Cannot apply tranform as it doesn't deride from Transform.")
+        if not isinstance(transform, Transform):
+            raise ValueError(
+                "Cannot apply tranform as it doesn't deride from Transform.")
         transform.apply(self)
-
