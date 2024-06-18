@@ -1,12 +1,13 @@
 from collections.abc import Iterable
-from typing import IO, Dict, Callable, List, Literal, Tuple
+from copy import deepcopy
+from typing import IO, Dict, Callable, List, Literal
 from io import BytesIO
 import logging
 
 #from .transforms import Transform
 from .compression import deflate, inflate
 from .filtering import unfilter
-from .utils import bytes_to_binary_string, check_crc, get_crc, get_x_bits
+from .utils import check_crc, get_crc, get_x_bits
 
 logging.basicConfig(level=logging.INFO)
 
@@ -95,7 +96,7 @@ class Image:
 
         if background_colour == None:
             background_colour = [0 for _ in range(
-                image._numb_samples_per_pixel)]
+                image.numb_samples_per_pixel)]
         else:
             image._test_pixel(background_colour)
 
@@ -125,12 +126,6 @@ class Image:
         if not self._pixels:
             raise ValueError("Cannot conver to bytes as IDAT data not parsed.")
 
-        # If the image currently has a palette we don't respect that
-        # and use colour type 2 instead.
-        if self._colour_type == 3:
-            self._colour_type = 2
-            self._bit_depth = 8
-            self._sample_depth_in_bits = 8
 
         img_as_bytes = self._header
         img_as_bytes += add_chunk_length_bytes(
@@ -352,21 +347,29 @@ class Image:
             for _ in range(w):
                 pixel: List[int] = []
                 if self._colour_type == 3:
-                    val, row = get_x_bits(self._sample_depth_in_bits, row)
-                    bits_read += self._sample_depth_in_bits
+                    val, row = get_x_bits(self.bit_depth, row)
+                    bits_read += self.bit_depth
                     val = int.from_bytes(val)
                     try:
                         pixel = list(self._palette[val])
                     except IndexError:
                         raise ValueError("Invalid palette index.")
                 else:
-                    for _ in range(self._numb_samples_per_pixel):
+                    for _ in range(self.numb_samples_per_pixel):
                         bits_read += self._bit_depth
                         val, row = get_x_bits(self._bit_depth, row)
                         val = int.from_bytes(val)
                         pixel.append(val)
                 row_pixels.append(pixel)
             pixels.append(row_pixels)
+
+        
+        # if the image has index based colour we convert it to the equivilent
+        # normal version
+        if self._colour_type == 3:
+            self._colour_type = 2
+            self._bit_depth = 8
+
         self._pixels = pixels
 
     def _parse_IEND_chunk(self, f: IO[bytes], _):
@@ -450,11 +453,11 @@ class Image:
         Get a copy of the 2d list of pixels
         """
         if self._finished_parsing:
-            return self._pixels.copy()
+            return deepcopy(self._pixels)
         else:
             return []
 
-    def replace_pixels(self, new_pixels: List[List[Tuple]]) -> bool:
+    def replace_pixels(self, new_pixels: List[List[List]]) -> None:
         """
         Perform some checks to see if the passed new_pixels is valid,
         if it is then set self._pixels to it.
@@ -463,22 +466,19 @@ class Image:
         @return whether the pixel list has been changed.
 
         """
-        w, h = self.shape
-        if len(new_pixels) != h:
-            return False
-
+        len_prev_row : int | None = None
         for row in new_pixels:
-            if len(row) != w:
-                return False
+            if len_prev_row != None and len(row) != len_prev_row:
+                raise ValueError("Rows of pixels must be of the same length.")
             for px in row:
-                if len(px) != self._numb_samples_per_pixel:
-                    return False
-                for sample in px:
-                    if not isinstance(sample, int):
-                        return False
-                    if sample.bit_length() > self._sample_depth_in_bits:
-                        return False
-        return True
+                self._test_pixel(px)
+            len_prev_row = len(row)
+
+        self._width = len(new_pixels[0])
+        self._height = len(new_pixels)
+        
+        self._pixels = new_pixels
+    
 
     def _test_pixel(self,pix: List[int]):
         """
@@ -486,11 +486,11 @@ class Image:
 
         @raises ValueError
         """
-        if len(pix) != self._numb_samples_per_pixel:
+        if len(pix) != self.numb_samples_per_pixel:
             raise ValueError("Pixel has the incorrect number of samples.")
 
         for sample in pix:
-            if sample.bit_length() > self._bit_depth:
+            if sample.bit_length() > self.bit_depth or sample <  0:
                 raise ValueError("Sample is to large to be represented")
 
     def set_pixel(self, x: int, y: int, pix: List[int]):
@@ -508,15 +508,19 @@ class Image:
         """
         Get a copy of the pixel at a given coord.
         """
+        w,h = self.shape
+        if x >= w or y >= h or x < 0 or y <0:
+            raise IndexError(f"Cannot get pixel ({x},{y}) from image of size ({w},{h}).")
+            
         return self._pixels[y][x].copy()
 
 
     @property
     def _pixel_size_in_bits(self):
-        return self._bit_depth * self._numb_samples_per_pixel
+        return self._bit_depth * self.numb_samples_per_pixel
 
     @property
-    def _numb_samples_per_pixel(self):
+    def numb_samples_per_pixel(self):
         return self._number_samples_per_pixel_by_colour_type[self._colour_type]
     
     @property

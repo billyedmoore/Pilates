@@ -1,3 +1,3 @@
 from .image import Image
-from pilates.transforms import Invert
+from pilates.transforms import Invert,Resize
 
