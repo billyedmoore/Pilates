@@ -101,7 +101,7 @@ class Image:
 
         image._pixels = [
             [background_colour for _ in range(width)]for _ in range(height)]
-
+        image._finished_parsing = True
         return image
 
     def to_bytes(self) -> bytes:
@@ -448,10 +448,10 @@ class Image:
         """
         Get a copy of the 2d list of pixels
         """
-        if self._finished_parsing:
-            return deepcopy(self._pixels)
-        else:
-            return []
+        if not self._finished_parsing:
+            raise ValueError("Cannot get pixels, we haven't finished parsing.")
+
+        return deepcopy(self._pixels)
 
     def replace_pixels(self, new_pixels: List[List[List]]) -> None:
         """
@@ -541,7 +541,7 @@ class Image:
 
         new_max = (2**new_bit_depth)-1
         old_max = (2**self.bit_depth)-1
-        
+
         old_bit_depth = self.bit_depth
 
         self._bit_depth = new_bit_depth
@@ -554,7 +554,8 @@ class Image:
                     # scale to new range
                     new_pixel.append(int((pixel[i] / old_max)*new_max))
                 self.set_pixel(x, y, new_pixel)
-        logging.info(f"Changed the bit_depth from {old_bit_depth} to {new_bit_depth}")
+        logging.info(f"Changed the bit_depth from {
+                     old_bit_depth} to {new_bit_depth}")
 
     def apply_transform(self, transform):
         """

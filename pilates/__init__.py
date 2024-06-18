@@ -1,3 +1,2 @@
 from .image import Image
-from pilates.transforms import Invert,Resize
-
+from pilates.transforms import Invert, Resize, SortPixels
