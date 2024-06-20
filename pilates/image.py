@@ -440,6 +440,33 @@ class Image:
         """
         return b"IEND"
 
+    def to_grayscale(self) -> None:
+        """
+        Convert a truecolour image to grayscale. 
+
+        @raises ValueError if the image isn't truecolour.
+        """
+        if self.colour_type not in [2,6]:
+            raise ValueError("Can only convert truecolour images to grayscale.")
+
+        def int_average(lst: List[int]) -> int:
+            return round(sum(lst) / len(lst))
+
+        # truecolour images must have bit_depth = 8 or 16 which 
+        # is also valid for grayscale so no need to change
+        w,h = self.shape
+        new_pixels = [[[] for _ in range(w)]for _ in range(h)]
+        self._colour_type = 0 if self._colour_type == 2 else 4
+        for x in range(w):
+            for y in range(h):
+                px = self.get_pixel(x,y)
+                if self.colour_type == 0:
+                    new_pixels[y][x] = [int_average(px)]
+                if self.colour_type == 4:
+                    new_pixels[y][x] = [int_average(px[:3]),px[-1]]
+
+        self.replace_pixels(new_pixels)
+
     @property
     def shape(self):
         return (self._width, self._height)
@@ -456,7 +483,8 @@ class Image:
     def replace_pixels(self, new_pixels: List[List[List]]) -> None:
         """
         Perform some checks to see if the passed new_pixels is valid,
-        if it is then set self._pixels to it.
+        if it is then set self._pixels to it. Will change the shape of the 
+        image if the dimensions of the new pixels don't match the old ones.
 
         @param a 2d list of pixels 
         @return whether the pixel list has been changed.
