@@ -446,25 +446,75 @@ class Image:
 
         @raises ValueError if the image isn't truecolour.
         """
-        if self.colour_type not in [2,6]:
-            raise ValueError("Can only convert truecolour images to grayscale.")
+        if self.colour_type not in [2, 6]:
+            raise ValueError(
+                "Can only convert truecolour images to grayscale.")
 
         def int_average(lst: List[int]) -> int:
             return round(sum(lst) / len(lst))
 
-        # truecolour images must have bit_depth = 8 or 16 which 
+        # truecolour images must have bit_depth = 8 or 16 which
         # is also valid for grayscale so no need to change
-        w,h = self.shape
+        w, h = self.shape
         new_pixels = [[[] for _ in range(w)]for _ in range(h)]
         self._colour_type = 0 if self._colour_type == 2 else 4
         for x in range(w):
             for y in range(h):
-                px = self.get_pixel(x,y)
+                px = self.get_pixel(x, y)
                 if self.colour_type == 0:
                     new_pixels[y][x] = [int_average(px)]
                 if self.colour_type == 4:
-                    new_pixels[y][x] = [int_average(px[:3]),px[-1]]
+                    new_pixels[y][x] = [int_average(px[:3]), px[-1]]
 
+        self.replace_pixels(new_pixels)
+
+    def to_truecolour(self) -> None:
+        """
+        Convert a grayscale image to truecolour. 
+        Images should look the same but be represented with 3 samples 
+        instead of one.
+
+        @raises ValueError if the image isn't grayscale.
+        """
+        if self.colour_type not in [0, 4]:
+            raise ValueError(
+                "Can only convert grayscale images to truecolour.")
+
+        # truecolour images must have bit_depth = 8 or 16 which
+        # is also valid for grayscale so no need to change
+        w, h = self.shape
+        new_pixels = [[[] for _ in range(w)]for _ in range(h)]
+        self._colour_type = 2 if self._colour_type == 0 else 6
+        for x in range(w):
+            for y in range(h):
+                px = self.get_pixel(x, y)
+                if self.colour_type == 2:
+                    new_pixels[y][x] = [px[0], px[0], px[0]]
+                if self.colour_type == 6:
+                    new_pixels[y][x] = [px[0], px[0], px[0], px[1]]
+
+        self.replace_pixels(new_pixels)
+
+    def add_alpha(self) -> None:
+        """
+        Add an alpha sample to each pixel in a image that doesn't have one.
+        The alpha values are all initalised to the max value (not at all transparent).
+
+        @raises value error if the image already has an alpha channel or colour
+                is index based.
+        """
+        if self.colour_type not in [0, 2]:
+            raise ValueError(
+                "Can only convert grayscale images to truecolour.")
+
+        w, h = self.shape
+        new_pixels = [[[] for _ in range(w)]for _ in range(h)]
+        self._colour_type = {0: 4, 2: 6}[self.colour_type]
+
+        for x in range(w):
+            for y in range(h):
+                px = self.get_pixel(x, y)
+                new_pixels[y][x] = px + [(2**self.bit_depth)-1]
         self.replace_pixels(new_pixels)
 
     @property
