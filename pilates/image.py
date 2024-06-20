@@ -505,7 +505,8 @@ class Image:
         """
         if self.colour_type not in [0, 2]:
             raise ValueError(
-                "Can only convert grayscale images to truecolour.")
+                "Can only add alpha to truecolour and greyscale images that don't \
+                have alpha samples.")
 
         w, h = self.shape
         new_pixels = [[[] for _ in range(w)]for _ in range(h)]
@@ -515,6 +516,25 @@ class Image:
             for y in range(h):
                 px = self.get_pixel(x, y)
                 new_pixels[y][x] = px + [(2**self.bit_depth)-1]
+        self.replace_pixels(new_pixels)
+
+    def remove_alpha(self) -> None:
+        """
+        Remove the alpha sample from each pixel in an image.
+
+        @raises value error if the image doesn't have an alpha channel
+        """
+        if self.colour_type not in [4,6]:
+            raise ValueError("Can only remove alpha samples from images that have them.")
+
+        w, h = self.shape
+        new_pixels = [[[] for _ in range(w)]for _ in range(h)]
+        self._colour_type = {4: 0, 6: 2}[self.colour_type]
+
+        for x in range(w):
+            for y in range(h):
+                px = self.get_pixel(x, y)
+                new_pixels[y][x] = px[:-1]
         self.replace_pixels(new_pixels)
 
     @property
