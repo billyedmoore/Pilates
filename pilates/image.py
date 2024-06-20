@@ -21,7 +21,7 @@ class Image:
                                         4: [8, 16],
                                         6: [8, 16]}
 
-    def __init__(self):
+    def __init__(self) -> None:
         print("New image")
 
         # set our defaults
@@ -43,7 +43,7 @@ class Image:
         self._pixels_loaded: bool = False
 
     @classmethod
-    def from_file(cls, file_path: str):
+    def from_file(cls, file_path: str) -> None:
         """
         Create an image from a png file.
 
@@ -134,7 +134,7 @@ class Image:
 
         return img_as_bytes
 
-    def to_file(self, filename: str):
+    def to_file(self, filename: str) -> None:
         """
         Save the image as a png at filename
 
@@ -194,7 +194,7 @@ class Image:
         self._text_attributes[key.decode("utf-8")] = value.decode("utf-8")
         _ = f.read(4)
 
-    def _log_state(self):
+    def _log_state(self) -> None:
         """"
         log the state of the image to INFO 
         """
@@ -541,7 +541,7 @@ class Image:
     def shape(self):
         return (self._width, self._height)
 
-    def get_pixels(self):
+    def get_pixels(self) -> List[List[List[int]]]:
         """
         Get a copy of the 2d list of pixels
         """
@@ -550,7 +550,7 @@ class Image:
 
         return deepcopy(self._pixels)
 
-    def replace_pixels(self, new_pixels: List[List[List]]) -> None:
+    def replace_pixels(self, new_pixels: List[List[List[int]]]) -> None:
         """
         Perform some checks to see if the passed new_pixels is valid,
         if it is then set self._pixels to it. Will change the shape of the 
