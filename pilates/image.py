@@ -5,7 +5,7 @@ from io import BytesIO
 import logging
 
 from .compression import deflate, inflate
-from .filtering import unfilter
+from .filtering import unfilter,filter
 from .utils import check_crc, get_crc, get_x_bits
 
 logging.basicConfig(level=logging.INFO)
@@ -408,7 +408,6 @@ class Image:
         """
         Generate the IDAT chunk as a bytes, doesn't include the size.
         """
-        chunk: bytes = b""
         logging.info(f"Found pixels in shape ({
                      len(self._pixels[0])},{len(self._pixels)})")
         
@@ -432,9 +431,10 @@ class Image:
 
             rows.append(row)
 
-        for i,row in rows:
-        
+        chunk: bytes = b""
 
+        for i,filtered_row in filter(rows,-(-self._pixel_size_in_bits//8)):
+            chunk += int(i).to_bytes(1) + filtered_row
 
         chunk = b"IDAT" + deflate(chunk)
         return chunk

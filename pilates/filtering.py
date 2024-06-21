@@ -11,7 +11,29 @@ a x
 
 """
 
-from typing import Dict, Callable, List
+from typing import Dict, Callable, List, Tuple
+import random
+
+
+def filter(rows: List[bytes], pixel_size: int) -> List[Tuple[int, bytes]]:
+    """
+    Filter a series of rows return a list of tuples with 
+
+    @param rows: 
+    @param pixel_size: the number of bytes in each pixel
+    @returns: list of tuples in the form (filter_type,filtered_row)
+    """
+    funcs = {0: (lambda rws, index, _: rws[index]),
+             1: apply_filter_1,
+             2: apply_filter_2,
+             3: apply_filter_3,
+             4: apply_filter_4}
+    return_rows: List[Tuple[int, bytes]] = []
+
+    for i in range(len(rows)):
+        method: int = random.choice([0,1,2,3,4])
+        return_rows.append((method,funcs[method](rows,i,pixel_size)))
+    return return_rows
 
 
 def unfilter(rows: List[bytes], filter_types: List[int], pixel_size: int):
@@ -166,13 +188,14 @@ def apply_filter_3(rows: List[bytes], index: int, px_size: int) -> bytes:
     @returns: the filtered row
     """
     row = list(rows[index])
+    unfiltered_row = list(rows[index])
     above_row = list(
         rows[index-1]) if index > 0 else [0 for _ in range(len(row))]
 
     for i in range(0, len(row), px_size):
         x_val = row[i:i+px_size]
         b_val = above_row[i:i+px_size]
-        a_val = row[i-px_size:i] if i - \
+        a_val = unfiltered_row[i-px_size:i] if i - \
             px_size >= 0 else [0 for _ in range(px_size)]
 
         for j in range(px_size):
@@ -218,13 +241,14 @@ def apply_filter_4(rows: List[bytes], index: int, px_size: int) -> bytes:
     @returns: the filtered row
     """
     row = list(rows[index])
+    unfiltered_row = list(rows[index])
     above_row = list(
         rows[index-1]) if index > 0 else [0 for _ in range(len(row))]
 
     for i in range(0, len(row), px_size):
         x_val = row[i:i+px_size]
         b_val = above_row[i:i+px_size]
-        a_val = row[i-px_size:i] if i - \
+        a_val = unfiltered_row[i-px_size:i] if i - \
             px_size >= 0 else [0 for _ in range(px_size)]
         c_val = above_row[i-px_size:i] if i - \
             px_size >= 0 else [0 for _ in range(px_size)]
