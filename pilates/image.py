@@ -43,7 +43,7 @@ class Image:
         self._pixels_loaded: bool = False
 
     @classmethod
-    def from_file(cls, file_path: str) -> None:
+    def from_file(cls, file_path: str):
         """
         Create an image from a png file.
 
@@ -411,10 +411,11 @@ class Image:
         chunk: bytes = b""
         logging.info(f"Found pixels in shape ({
                      len(self._pixels[0])},{len(self._pixels)})")
-
+        
+        rows: List[bytes] = []
         for pix_row in self._pixels:
             # TODO: Add support for other filtering methods we only apply no filter here
-            row: bytes = int(0).to_bytes(1)
+            row: bytes = b""
             samples = []
             for pix in pix_row:
                 for sample in pix:
@@ -429,7 +430,11 @@ class Image:
             row += bytes([int(str_row[i:i+8], 2)
                          for i in range(0, len(str_row), 8)])
 
-            chunk += row
+            rows.append(row)
+
+        for i,row in rows:
+        
+
 
         chunk = b"IDAT" + deflate(chunk)
         return chunk

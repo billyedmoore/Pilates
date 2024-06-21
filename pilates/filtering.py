@@ -11,7 +11,6 @@ a x
 
 """
 
-from io import BytesIO
 from typing import Dict, Callable, List
 
 
@@ -63,6 +62,29 @@ def reverse_filter_1(rows: List[bytes], index: int, px_size: int) -> None:
     rows[index] = bytes(row)
 
 
+def apply_filter_1(rows: List[bytes], index: int, px_size: int) -> bytes:
+    """
+    Apply filter method 1 to a row and return the filtered row.
+    Shouldn't modify rows.
+
+    @param px_size: the number of bytes in each pixel
+    @param row_in_byts: the row to filter
+    @returns: the filtered row
+    """
+    row = list(rows[index])
+    unfiltered_row = list(rows[index])
+
+    for i in range(0, len(row), px_size):
+        x_val = row[i:i+px_size]
+        a_val = unfiltered_row[i-px_size:i] if i - \
+            px_size >= 0 else [0 for _ in range(px_size)]
+
+        for j in range(px_size):
+            row[i+j] = (x_val[j] - a_val[j]) % 256
+
+    return bytes(row)
+
+
 def reverse_filter_2(rows: List[bytes], index: int, px_size: int) -> None:
     """
     Updates the list rows to unfilter the row rows[index]. Updates the rows 
@@ -87,6 +109,29 @@ def reverse_filter_2(rows: List[bytes], index: int, px_size: int) -> None:
     rows[index] = bytes(row)
 
 
+def apply_filter_2(rows: List[bytes], index: int, px_size: int) -> bytes:
+    """
+    Apply filter method 1 to a row and return the filtered row.
+    Shouldn't modify rows.
+
+    @param px_size: the number of bytes in each pixel
+    @param rows: the rows in the image
+    @returns: the filtered row
+    """
+    row = list(rows[index])
+    above_row = list(
+        rows[index-1]) if index > 0 else [0 for _ in range(len(row))]
+
+    for i in range(0, len(row), px_size):
+        x_val = row[i:i+px_size]
+        b_val = above_row[i:i+px_size]
+
+        for j in range(px_size):
+            row[i+j] = (x_val[j] - b_val[j]) % 256
+
+    return bytes(row)
+
+
 def reverse_filter_3(rows: List[bytes], index: int, px_size: int) -> None:
     """
     Updates the list rows to unfilter the row rows[index]. Updates the rows 
@@ -109,6 +154,31 @@ def reverse_filter_3(rows: List[bytes], index: int, px_size: int) -> None:
         for j in range(px_size):
             row[i+j] = (x_val[j] + ((a_val[j] + b_val[j])//2)) % 256
     rows[index] = bytes(row)
+
+
+def apply_filter_3(rows: List[bytes], index: int, px_size: int) -> bytes:
+    """
+    Apply filter method 3 to a row and return the filtered row.
+    Shouldn't modify rows.
+
+    @param px_size: the number of bytes in each pixel
+    @param rows: the rows in the image
+    @returns: the filtered row
+    """
+    row = list(rows[index])
+    above_row = list(
+        rows[index-1]) if index > 0 else [0 for _ in range(len(row))]
+
+    for i in range(0, len(row), px_size):
+        x_val = row[i:i+px_size]
+        b_val = above_row[i:i+px_size]
+        a_val = row[i-px_size:i] if i - \
+            px_size >= 0 else [0 for _ in range(px_size)]
+
+        for j in range(px_size):
+            row[i+j] = (x_val[j] - ((a_val[j] + b_val[j])//2)) % 256
+
+    return bytes(row)
 
 
 def reverse_filter_4(rows: List[bytes], index: int, px_size: int) -> None:
@@ -136,6 +206,33 @@ def reverse_filter_4(rows: List[bytes], index: int, px_size: int) -> None:
             row[i+j] = (x_val[j] + paeth_predictor(a_val[j],
                         b_val[j], c_val[j])) % 256
     rows[index] = bytes(row)
+
+
+def apply_filter_4(rows: List[bytes], index: int, px_size: int) -> bytes:
+    """
+    Apply filter method 3 to a row and return the filtered row.
+    Shouldn't modify rows.
+
+    @param px_size: the number of bytes in each pixel
+    @param rows: the rows in the image
+    @returns: the filtered row
+    """
+    row = list(rows[index])
+    above_row = list(
+        rows[index-1]) if index > 0 else [0 for _ in range(len(row))]
+
+    for i in range(0, len(row), px_size):
+        x_val = row[i:i+px_size]
+        b_val = above_row[i:i+px_size]
+        a_val = row[i-px_size:i] if i - \
+            px_size >= 0 else [0 for _ in range(px_size)]
+        c_val = above_row[i-px_size:i] if i - \
+            px_size >= 0 else [0 for _ in range(px_size)]
+
+        for j in range(px_size):
+            row[i+j] = (x_val[j] - paeth_predictor(a_val[j],
+                        b_val[j], c_val[j])) % 256
+    return bytes(row)
 
 
 def paeth_predictor(a_val, b_val, c_val):
