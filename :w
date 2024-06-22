@@ -3,7 +3,6 @@ from copy import deepcopy
 from typing import IO, Dict, Callable, List, Literal
 from io import BytesIO
 import logging
-from sys import maxsize
 
 from .compression import deflate, inflate
 from .filtering import unfilter, filter
@@ -434,20 +433,16 @@ class Image:
 
         chunk: bytes = b""
 
-        for i, filtered_row in filter(rows,self):
+        for i, filtered_row in filter(rows, -(-self._pixel_size_in_bits//8), self):
             chunk += int(i).to_bytes(1) + filtered_row
 
         chunk = b"IDAT" + deflate(chunk)
         return chunk
 
     @property 
-    def numb_unique_colours(self):
-        """
-        Get the number of unique colours in the image.
-        """
-        pixels = set(sum([[tuple(lst) for lst in row] for row in self._pixels],[]))
-        return len(pixels)
-    
+    def numb_colours(self):
+
+        [[tuple(lst) for lst in row] for row in self._pixels]]
 
     def _generate_IEND_chunk(self) -> bytes:
         """
@@ -627,10 +622,6 @@ class Image:
     @property
     def _pixel_size_in_bits(self):
         return self._bit_depth * self.numb_samples_per_pixel
-
-    @property
-    def pixel_size(self):
-        return -(-self._pixel_size_in_bits//8)
 
     @property
     def numb_samples_per_pixel(self):

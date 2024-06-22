@@ -11,11 +11,12 @@ a x
 
 """
 
+from sys import maxsize
 from typing import Dict, Callable, List, Tuple
 import random
 
 
-def filter(rows: List[bytes], pixel_size: int) -> List[Tuple[int, bytes]]:
+def filter(rows: List[bytes], img) -> List[Tuple[int, bytes]]:
     """
     Filter a series of rows return a list of tuples with 
 
@@ -31,8 +32,26 @@ def filter(rows: List[bytes], pixel_size: int) -> List[Tuple[int, bytes]]:
     return_rows: List[Tuple[int, bytes]] = []
 
     for i in range(len(rows)):
-        method: int = random.choice([0,1,2,3,4])
-        return_rows.append((method,funcs[method](rows,i,pixel_size)))
+        if img.bit_depth < 8:
+            return_rows.append((0, rows[i]))
+        else:
+            best_method: int  = -1
+            lowest_sum: int = maxsize
+            best_row: bytes = b""
+
+            for method in [0, 1, 2, 3, 4]:
+                found_row = funcs[method](rows, i, img.pixel_size)
+
+                if sum(list(found_row)) < lowest_sum:
+                    best_method = method
+                    lowest_sum = sum(list(found_row))
+                    best_row = found_row
+
+            if best_method == -1:
+                raise ValueError("Best method not found.")
+
+            return_rows.append((best_method,best_row))
+
     return return_rows
 
 
